@@ -1,12 +1,14 @@
 package haxeserver.repro;
 
-import sys.io.Process;
 import haxe.DynamicAccess;
 import haxe.Json;
+import haxe.Rest;
 import haxe.display.Server.ConfigurePrintParams;
 import haxe.extern.EitherType;
 import haxe.io.Path;
 import js.Node.console;
+import js.node.Buffer;
+import js.node.ChildProcess;
 import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
@@ -18,6 +20,7 @@ import haxeserver.process.HaxeServerProcessNode;
 // Module js.Node does not define type console
 // import js.Node.console.error;
 
+using StringTools;
 using haxeserver.repro.HaxeRepro;
 
 class HaxeRepro {
@@ -34,6 +37,7 @@ class HaxeRepro {
 	var server:HaxeServerAsync;
 
 	var path:String;
+	var gitRef:String;
 	var logfile(get, never):String;
 	inline function get_logfile():String return Path.join([path, REPRO_LOGFILE]);
 
@@ -128,25 +132,36 @@ class HaxeRepro {
 	static function getData<T:{}>(file:FileInput):T
 		return cast Json.parse(file.readLine());
 
-	function git(args:Array<String>):Void {
-		var proc = new Process("git", args);
-		if (proc.exitCode(true) > 0) throw proc.stderr.readAll();
+	function git(args:Rest<String>):String {
+		var proc = ChildProcess.spawnSync("git", args.toArray());
+		if (proc.status > 0) throw (proc.stderr:Buffer).toString().trim();
+		return (proc.stdout:Buffer).toString().trim();
 	}
 
 	function checkoutGitRef(ref:String, next:Void->Void):Void {
-		git(["stash", "save", "--include-untracked", "Stash before repro"]);
-		git(["checkout", ref]);
+		gitRef = git("rev-parse", "--abbrev-ref", "HEAD");
+		if (gitRef == "HEAD") gitRef = git("rev-parse", "--short", "HEAD");
+
+		git("stash", "save", "--include-untracked", "Stash before repro");
+		git("checkout", ref);
 		next();
 	}
 
 	function applyGitPatch(next:Void->Void):Void {
-		git(["apply", "--allow-empty", Path.join([path, REPRO_PATCHFILE])]);
+		git("apply", "--allow-empty", Path.join([path, REPRO_PATCHFILE]));
 		next();
 	}
 
 	function addGitUntracked(next:Void->Void):Void {
 		trace('TODO: apply untracked');
 		next();
+	}
+
+	// TODO: actually call on cleanup
+	function resetGit():Void {
+		git("clean", "-f", "-d");
+		git("reset", "--hard");
+		git("checkout", gitRef);
 	}
 
 	function displayRequest(id:Null<Int>, request:String, params:Array<String>):Void {
