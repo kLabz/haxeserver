@@ -1,0 +1,9 @@
+-cp src
+-cp tests
+-lib hxnodejs
+-D analyzer-optimize
+
+# Input.readBytes not implemented on eval?!
+# --run haxeserver.repro.HaxeRepro
+-main haxeserver.repro.HaxeRepro
+--js repro.js
