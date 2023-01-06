@@ -72,9 +72,14 @@ class HaxeRepro {
 
 	function start(done:Void->Void):Void {
 		// TODO: only if ready
-		// TODO: make sure to cleanup when done
 		process = new HaxeServerProcessNode("haxe", displayArguments, done);
 		server = new HaxeServerAsync(() -> process);
+	}
+
+	function cleanup() {
+		resetGit();
+		if (server != null) server.stop();
+		if (process != null) process.close();
 	}
 
 	function next() {
@@ -82,50 +87,55 @@ class HaxeRepro {
 		var line = file.readLine();
 		if (line == "") return next();
 
-		switch (line.charCodeAt(0)) {
-			case '#'.code: return next();
+		try {
+			switch (line.charCodeAt(0)) {
+				case '#'.code: return next();
 
-			// Surely we won't be running this for 1000+ years
-			case '2'.code if (extractor.match(line)):
-				final get = extractor.matched;
-				final entry = (cast get(3) :ReproEntry);
+				// Surely we won't be running this for 1000+ years
+				case '2'.code if (extractor.match(line)):
+					final get = extractor.matched;
+					final entry = (cast get(3) :ReproEntry);
 
-				// TODO: add proper (and optional) logging
-				trace(entry);
+					// TODO: add proper (and optional) logging
+					trace(entry);
 
-				switch (entry) {
-					// TODO: actually use this
-					case UserConfig:
-						userConfig = file.getData();
-						next();
+					switch (entry) {
+						// TODO: actually use this
+						case UserConfig:
+							userConfig = file.getData();
+							next();
 
-					// TODO: actually use this
-					case DisplayServer:
-						displayServer = file.getData();
-						next();
+						// TODO: actually use this
+						case DisplayServer:
+							displayServer = file.getData();
+							next();
 
-					case DisplayArguments:
-						displayArguments = file.getData();
-						start(next);
+						case DisplayArguments:
+							displayArguments = file.getData();
+							start(next);
 
-					case CheckoutGitRef:
-						checkoutGitRef(file.readLine(), next);
+						case CheckoutGitRef:
+							checkoutGitRef(file.readLine(), next);
 
-					case ApplyGitPatch:
-						applyGitPatch(next);
+						case ApplyGitPatch:
+							applyGitPatch(next);
 
-					case AddGitUntracked:
-						addGitUntracked(next);
+						case AddGitUntracked:
+							addGitUntracked(next);
 
 
-					case entry:
-						trace(entry);
-						// TODO: error
-						for (i in 1...6) trace(get(i));
-				}
+						case entry:
+							// TODO: error
+							for (i in 1...6) trace(get(i));
+							throw 'Unhandled entry: $entry';
+					}
 
-			case _:
-				trace('Unexpected line:\n$line');
+				case _:
+					trace('Unexpected line:\n$line');
+			}
+		} catch (e) {
+			cleanup();
+			console.error(e);
 		}
 	}
 
@@ -157,11 +167,12 @@ class HaxeRepro {
 		next();
 	}
 
-	// TODO: actually call on cleanup
 	function resetGit():Void {
+		if (gitRef == null) return;
 		git("clean", "-f", "-d");
 		git("reset", "--hard");
 		git("checkout", gitRef);
+		git("stash", "pop");
 	}
 
 	function displayRequest(id:Null<Int>, request:String, params:Array<String>):Void {
