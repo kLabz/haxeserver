@@ -1,5 +1,13 @@
 -cp src
 -cp tests
+
+# Don't do this at home ~ TODO: properly include relevant types
+-cp /git/vshaxe/server/src
+-cp /git/vshaxe/server/shared
+-lib language-server-protocol
+-lib safety
+-lib vscode-json-rpc
+
 -lib hxnodejs
 -D analyzer-optimize
 

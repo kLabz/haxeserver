@@ -4,9 +4,15 @@ import haxe.io.Eof;
 import haxe.io.BytesBuffer;
 import haxe.io.BytesOutput;
 import haxe.io.Bytes;
-import sys.io.Process;
 
-#if !sys
+#if nodejs
+import js.node.Buffer;
+import js.node.ChildProcess;
+#else
+import sys.io.Process;
+#end
+
+#if (!sys && (!js || !nodejs))
 #error "HaxeServerProcess is only supported on sys targets"
 #end
 
@@ -31,6 +37,14 @@ class HaxeServerProcessConnect implements IHaxeServerProcess {
 		Makes a request to the Haxe compilation server with the given `arguments`.
 	**/
 	public function request(arguments:Array<String>, ?stdin:Bytes, callback:HaxeServerRequestResult->Void, errback:String->Void) {
+		#if nodejs
+		var p = ChildProcess.spawnSync(haxeCmd, baseArguments.concat(arguments));
+		// TODO: handle stdin
+		var stdout = (p.stdout:Buffer);
+		var stderr = (p.stderr:Buffer);
+		var exitCode = p.status;
+
+		#else
 		var p = new Process(haxeCmd, baseArguments.concat(arguments));
 		if (stdin != null) {
 			p.stdin.writeInt32(stdin.length + 1);
@@ -41,11 +55,12 @@ class HaxeServerProcessConnect implements IHaxeServerProcess {
 		var stderr = p.stderr.readAll();
 		var exitCode = p.exitCode();
 		p.close();
+		#end
 		callback({
 			hasError: exitCode != 0,
 			stdout: stdout.toString(),
 			stderr: stderr.toString(),
-			stderrRaw: stderr,
+			stderrRaw: #if nodejs null #else stderr #end, // TODO
 			prints: []
 		});
 	}

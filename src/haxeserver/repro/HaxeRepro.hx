@@ -1,25 +1,29 @@
 package haxeserver.repro;
 
-import haxe.DynamicAccess;
+import languageServerProtocol.textdocument.TextDocument.DocumentUri;
 import haxe.Json;
 import haxe.Rest;
-import haxe.display.Server.ConfigurePrintParams;
-import haxe.extern.EitherType;
 import haxe.io.Path;
 import js.Node.console;
 import js.node.Buffer;
 import js.node.ChildProcess;
+import js.node.child_process.ChildProcess as ChildProcessObject;
 import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
 
-import haxeserver.process.HaxeServerProcessNode;
+import haxeserver.process.HaxeServerProcessConnect;
+import haxeLanguageServer.Configuration;
+import haxeLanguageServer.DisplayServerConfig;
+import haxeLanguageServer.documents.HxTextDocument;
+import languageServerProtocol.textdocument.TextDocument.TextDocumentContentChangeEvent;
 
 // TODO: open issue and/or improve error
 // Module js.Node does not define type console
 // import js.Node.console.error;
 
 using StringTools;
+using haxeLanguageServer.extensions.DocumentUriExtensions;
 using haxeserver.repro.HaxeRepro;
 
 class HaxeRepro {
@@ -32,8 +36,8 @@ class HaxeRepro {
 	var displayArguments:Array<String>;
 
 	var file:FileInput;
-	var process:HaxeServerProcessNode;
-	var server:HaxeServerAsync;
+	var server:ChildProcessObject;
+	var client:HaxeServerAsync;
 
 	var path:String;
 	var gitRef:String;
@@ -71,18 +75,16 @@ class HaxeRepro {
 
 	function start(done:Void->Void):Void {
 		// TODO: only if ready
-		process = new HaxeServerProcessNode("haxe", displayArguments, done);
-		process.onExit(err -> {
-			console.error(err);
-			cleanup();
-		});
-		server = new HaxeServerAsync(() -> process);
+		server = ChildProcess.spawn("haxe", ["--wait", "7001"]);
+		var process = new HaxeServerProcessConnect("haxe", 7001, displayArguments);
+		client = new HaxeServerAsync(() -> process);
+		done();
 	}
 
 	function cleanup() {
 		resetGit();
-		if (server != null) server.stop();
-		if (process != null) process.close();
+		if (client != null) client.stop();
+		if (server != null) server.kill();
 	}
 
 	function next() {
@@ -119,13 +121,16 @@ class HaxeRepro {
 
 						case CheckoutGitRef:
 							checkoutGitRef(file.readLine(), next);
+							// file.readLine(); // TODO: remove
+							// next(); // TODO: remove
 
 						case ApplyGitPatch:
 							applyGitPatch(next);
+							// next(); // TODO: remove
 
 						case AddGitUntracked:
 							addGitUntracked(next);
-
+							// next(); // TODO: remove
 
 						case DisplayRequest:
 							displayRequest(
@@ -135,9 +140,17 @@ class HaxeRepro {
 								next
 							);
 
+						case ServerResponse:
+							// TODO: Ignored for now
+							file.readLine();
+							next();
+
+						case DidChangeTextDocument:
+							didChangeTextDocument(file.getData(), next);
+
 						case entry:
 							// TODO: error
-							for (i in 1...6) trace(get(i));
+							// for (i in 1...6) trace(get(i));
 							throw 'Unhandled entry: $entry';
 					}
 
@@ -194,17 +207,14 @@ class HaxeRepro {
 	):Void {
 		Sys.println('#$id > Display request $request');
 
-		server.rawRequest(
+		client.rawRequest(
 			params,
 			res -> {
-				// TODO: ?
-				trace(res);
+				// TODO: compare with serverResponse
+				// trace(res);
 				next();
 			},
-			err -> {
-				trace(err);
-				throw err;
-			}
+			err -> throw err
 		);
 	}
 
@@ -216,18 +226,19 @@ class HaxeRepro {
 		// });
 	}
 
-	// TODO: event type
 	function didChangeTextDocument(event:{
 		textDocument: {
 			version: Int,
-			uri: String,
+			uri: DocumentUri,
 		},
-		contentChanges: Array<Dynamic>
-	}):Void {
-		// tasks.push(function(next:Next):Void {
-		// 	trace('TODO: didChangeTextDocument event');
-		// 	next(Success);
-		// });
+		contentChanges: Array<TextDocumentContentChangeEvent>
+	}, next:Void->Void):Void {
+		var path = event.textDocument.uri.toFsPath().toString();
+		var content = File.getContent(path);
+		var doc = new HxTextDocument(event.textDocument.uri, "", 0, content);
+		doc.update(event.contentChanges, event.textDocument.version);
+		File.saveContent(path, doc.content);
+		next();
 	}
 }
 
@@ -248,106 +259,4 @@ enum abstract ReproEntry(String) {
 	var DidChangeTextDocument = "didChangeTextDocument";
 	var FileCreated = "fileCreated";
 	var FileDeleted = "fileDeleted";
-}
-
-// TODO: use types from haxe LSP
-
-private typedef DisplayServerConfig = {
-	var path:String;
-	var env:DynamicAccess<String>;
-	var arguments:Array<String>;
-	var useSocket:Bool;
-	var print:ConfigurePrintParams;
-}
-
-private typedef UserConfig = {
-	var enableCodeLens:Bool;
-	var enableDiagnostics:Bool;
-	var enableServerView:Bool;
-	var enableSignatureHelpDocumentation:Bool;
-	var diagnosticsPathFilter:String;
-	var displayPort:EitherType<Int, String>;
-	var buildCompletionCache:Bool;
-	var enableCompletionCacheWarning:Bool;
-	var useLegacyCompletion:Bool;
-	var codeGeneration:CodeGenerationConfig;
-	var exclude:Array<String>;
-	var postfixCompletion:PostfixCompletionConfig;
-	var importsSortOrder:ImportsSortOrderConfig;
-	var maxCompletionItems:Int;
-	var renameSourceFolders:Array<String>;
-	var inlayHints:InlayHintConfig;
-	var enableServerDump:Bool;
-	var serverDumpPath:String;
-	var serverDumpSourceMode:ServerDumpSourceMode;
-}
-
-private typedef InlayHintConfig = {
-	var variableTypes:Bool;
-	var parameterNames:Bool;
-	var parameterTypes:Bool;
-	var functionReturnTypes:Bool;
-	var conditionals:Bool;
-}
-
-private typedef PostfixCompletionConfig = {
-	var level:PostfixCompletionLevel;
-}
-
-private typedef CodeGenerationConfig = {
-	var functions:FunctionGenerationConfig;
-	var imports:ImportGenerationConfig;
-	var switch_:SwitchGenerationConfig;
-}
-
-private typedef SwitchGenerationConfig = {
-	var parentheses:Bool;
-}
-
-private typedef ImportGenerationConfig = {
-	var enableAutoImports:Bool;
-	var style:ImportStyle;
-}
-
-private typedef FunctionGenerationConfig = {
-	var anonymous:FunctionFormattingConfig;
-	var field:FunctionFormattingConfig;
-}
-
-private typedef FunctionFormattingConfig = {
-	var argumentTypeHints:Bool;
-	var returnTypeHint:ReturnTypeHintOption;
-	var useArrowSyntax:Bool;
-	var placeOpenBraceOnNewLine:Bool;
-	var explicitPublic:Bool;
-	var explicitPrivate:Bool;
-	var explicitNull:Bool;
-}
-
-private enum abstract ReturnTypeHintOption(String) from String {
-	final Always = "always";
-	final Never = "never";
-	final NonVoid = "non-void";
-}
-
-private enum abstract PostfixCompletionLevel(String) from String {
-	final Full = "full";
-	final Filtered = "filtered";
-	final Off = "off";
-}
-
-private enum abstract ServerDumpSourceMode(String) from String {
-	var SourceFiles;
-	var GitStatus;
-}
-
-private enum abstract ImportsSortOrderConfig(String) from String {
-	final AllAlphabetical = "all-alphabetical";
-	final StdlibThenLibsThenProject = "stdlib -> libs -> project";
-	final NonProjectThenProject = "non-project -> project";
-}
-
-private enum abstract ImportStyle(String) from String {
-	final Module = "module";
-	final Type = "type";
 }
