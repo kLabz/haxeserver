@@ -1,9 +1,9 @@
 package haxeserver.repro;
 
-import languageServerProtocol.textdocument.TextDocument.DocumentUri;
 import haxe.Json;
 import haxe.Rest;
 import haxe.io.Path;
+import js.Node;
 import js.Node.console;
 import js.node.Buffer;
 import js.node.ChildProcess;
@@ -16,6 +16,8 @@ import haxeserver.process.HaxeServerProcessConnect;
 import haxeLanguageServer.Configuration;
 import haxeLanguageServer.DisplayServerConfig;
 import haxeLanguageServer.documents.HxTextDocument;
+import languageServerProtocol.protocol.Protocol.DidChangeTextDocumentParams;
+import languageServerProtocol.textdocument.TextDocument.DocumentUri;
 import languageServerProtocol.textdocument.TextDocument.TextDocumentContentChangeEvent;
 
 // TODO: open issue and/or improve error
@@ -88,7 +90,13 @@ class HaxeRepro {
 	}
 
 	function next() {
-		if (file.eof()) return;
+		var next = Node.process.nextTick.bind(next, []);
+
+		if (file.eof()) {
+			Sys.println('Done.');
+			return cleanup();
+		}
+
 		var line = file.readLine();
 		if (line == "") return next();
 
@@ -102,7 +110,7 @@ class HaxeRepro {
 					final entry = (cast get(3) :ReproEntry);
 
 					// TODO: add proper (and optional) logging
-					trace(entry);
+					// Sys.println(entry);
 
 					switch (entry) {
 						// TODO: actually use this
@@ -120,33 +128,34 @@ class HaxeRepro {
 							start(next);
 
 						case CheckoutGitRef:
+							Sys.println('> Checkout git ref');
 							checkoutGitRef(file.readLine(), next);
-							// file.readLine(); // TODO: remove
-							// next(); // TODO: remove
 
 						case ApplyGitPatch:
+							Sys.println('> Apply git patch');
 							applyGitPatch(next);
-							// next(); // TODO: remove
 
 						case AddGitUntracked:
+							Sys.println('> Add untracked files');
 							addGitUntracked(next);
-							// next(); // TODO: remove
 
 						case DisplayRequest:
-							displayRequest(
-								get(4) == null ? null : Std.parseInt(get(4)),
-								get(5),
-								file.getData(),
-								next
-							);
+							var id = get(4) == null ? null : Std.parseInt(get(4));
+							var method = get(5);
+							displayRequest(id, method, file.getData(), next);
 
 						case ServerResponse:
-							// TODO: Ignored for now
+							var id = get(4);
+							var method = get(5);
+							if (id == null) Sys.println('< Got server response for $method');
+							else Sys.println('< Got server response for #$id $method');
 							file.readLine();
 							next();
 
 						case DidChangeTextDocument:
-							didChangeTextDocument(file.getData(), next);
+							var event:DidChangeTextDocumentParams = file.getData();
+							Sys.println('Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
+							didChangeTextDocument(event, next);
 
 						case entry:
 							// TODO: error
@@ -205,7 +214,10 @@ class HaxeRepro {
 		params:Array<String>,
 		next:Void->Void
 	):Void {
-		Sys.println('#$id > Display request $request');
+		switch [id, request] {
+			case [null, _]: Sys.println('> $request');
+			case _: Sys.println('> #$id Display request $request');
+		}
 
 		client.rawRequest(
 			params,
@@ -226,13 +238,7 @@ class HaxeRepro {
 		// });
 	}
 
-	function didChangeTextDocument(event:{
-		textDocument: {
-			version: Int,
-			uri: DocumentUri,
-		},
-		contentChanges: Array<TextDocumentContentChangeEvent>
-	}, next:Void->Void):Void {
+	function didChangeTextDocument(event:DidChangeTextDocumentParams, next:Void->Void):Void {
 		var path = event.textDocument.uri.toFsPath().toString();
 		var content = File.getContent(path);
 		var doc = new HxTextDocument(event.textDocument.uri, "", 0, content);
