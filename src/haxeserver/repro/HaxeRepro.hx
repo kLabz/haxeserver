@@ -13,7 +13,6 @@ import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
 
-import haxeserver.process.IHaxeServerProcess;
 import haxeserver.process.HaxeServerProcessNode;
 
 // TODO: open issue and/or improve error
@@ -33,7 +32,7 @@ class HaxeRepro {
 	var displayArguments:Array<String>;
 
 	var file:FileInput;
-	var process:IHaxeServerProcess;
+	var process:HaxeServerProcessNode;
 	var server:HaxeServerAsync;
 
 	var path:String;
@@ -73,6 +72,10 @@ class HaxeRepro {
 	function start(done:Void->Void):Void {
 		// TODO: only if ready
 		process = new HaxeServerProcessNode("haxe", displayArguments, done);
+		process.onExit(err -> {
+			console.error(err);
+			cleanup();
+		});
 		server = new HaxeServerAsync(() -> process);
 	}
 
@@ -124,6 +127,14 @@ class HaxeRepro {
 							addGitUntracked(next);
 
 
+						case DisplayRequest:
+							displayRequest(
+								get(4) == null ? null : Std.parseInt(get(4)),
+								get(5),
+								file.getData(),
+								next
+							);
+
 						case entry:
 							// TODO: error
 							for (i in 1...6) trace(get(i));
@@ -134,8 +145,8 @@ class HaxeRepro {
 					trace('Unexpected line:\n$line');
 			}
 		} catch (e) {
-			cleanup();
 			console.error(e);
+			cleanup();
 		}
 	}
 
@@ -175,11 +186,26 @@ class HaxeRepro {
 		git("stash", "pop");
 	}
 
-	function displayRequest(id:Null<Int>, request:String, params:Array<String>):Void {
-		// tasks.push(function(next:Next):Void {
-		// 	trace('displayRequest #$id: "$request"');
-		// 	next(Success);
-		// });
+	function displayRequest(
+		id:Null<Int>,
+		request:String,
+		params:Array<String>,
+		next:Void->Void
+	):Void {
+		Sys.println('#$id > Display request $request');
+
+		server.rawRequest(
+			params,
+			res -> {
+				// TODO: ?
+				trace(res);
+				next();
+			},
+			err -> {
+				trace(err);
+				throw err;
+			}
+		);
 	}
 
 	// TODO: response type
