@@ -234,6 +234,12 @@ class HaxeRepro {
 			throw 'Absolute path outside root not handled yet ($a)';
 		}
 
+		// TODO: clean that
+		if (a.startsWith("--cwd /")) {
+			if (a.startsWith("--cwd " + root)) return "--cwd ./" + a.substr("--cwd ".length + root.length);
+			throw 'Absolute path outside root not handled yet ($a)';
+		}
+
 		return a;
 	}
 
