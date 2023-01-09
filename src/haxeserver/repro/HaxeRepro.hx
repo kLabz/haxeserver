@@ -151,6 +151,7 @@ class HaxeRepro {
 
 						case DisplayArguments:
 							// Ignored for now; TODO: parse display arguments with new format
+							file.readLine();
 							next();
 
 						case CheckoutGitRef:
@@ -441,5 +442,5 @@ abstract Extractor(EReg) from EReg {
 enum abstract ComDirection(String) to String {
 	var In = "<";
 	var Out = ">";
-	var None = "-";
+	var Local = "-";
 }
