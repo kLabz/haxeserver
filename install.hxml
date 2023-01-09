@@ -1,2 +1,6 @@
+-lib hxnodejs:12.1.0
+-lib safety:1.1.2
+-lib hxargs:git:git@github.com:Simn/hxargs.git#1d8ec84f641833edd6f0cb2e4290b7524fd27219
 -lib language-server-protocol:git:git@github.com:vshaxe/language-server-protocol-haxe.git#a6baa2ddcd792e99b19398048ef95aa00f0aa1f6
+-lib utest:git:git@github.com:haxe-utest/utest.git#57b8e56cb3a24d7a4136113b3b820972d47be1f0
 -lib vscode-json-rpc:git:git@github.com:vshaxe/vscode-json-rpc.git#d04426d35d9a404a1ebc36127ecbe93473f6adff

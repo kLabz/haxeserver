@@ -4,14 +4,17 @@
 # Don't do this at home ~ TODO: properly include relevant types
 -cp /git/vshaxe/server/src
 -cp /git/vshaxe/server/shared
+-lib hxargs
 -lib language-server-protocol
 -lib safety
 -lib vscode-json-rpc
 
 -lib hxnodejs
 -D analyzer-optimize
+-D haxeserver.displayrequests_wait
+-D haxeserver.displayrequests_delay=100
 
 # Input.readBytes not implemented on eval?!
 # --run haxeserver.repro.HaxeRepro
 -main haxeserver.repro.HaxeRepro
---js repro.js
+--js repro/repro.js

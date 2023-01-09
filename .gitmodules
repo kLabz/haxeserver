@@ -1,0 +1,3 @@
+[submodule "repro/xredefined"]
+	path = repro/xredefined
+	url = git@github.com:kLabz/haxerepro-xredefined.git
