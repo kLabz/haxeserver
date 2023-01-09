@@ -1,3 +1,6 @@
 [submodule "repro/xredefined"]
 	path = repro/xredefined
 	url = git@github.com:kLabz/haxerepro-xredefined.git
+[submodule "haxe-lsp"]
+	path = haxe-lsp
+	url = git@github.com:vshaxe/haxe-language-server.git

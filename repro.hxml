@@ -2,8 +2,8 @@
 -cp tests
 
 # Don't do this at home ~ TODO: properly include relevant types
--cp /git/vshaxe/server/src
--cp /git/vshaxe/server/shared
+-cp haxe-lsp/src
+-cp haxe-lsp/shared
 -lib hxargs
 -lib language-server-protocol
 -lib safety
