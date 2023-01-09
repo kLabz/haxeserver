@@ -299,9 +299,9 @@ class HaxeRepro {
 		var next = stepping ? pause.bind(next) : next;
 
 		if (id == null)
-			Sys.println('$lineNumber: > Display request "$request"');
+			Sys.println('$lineNumber: > Server request "$request"');
 		else
-			Sys.println('$lineNumber: > Display request "$request" ($id)');
+			Sys.println('$lineNumber: > Server request "$request" ($id)');
 
 		params = params.map(maybeConvertPath);
 		// trace(params);
