@@ -40,12 +40,18 @@ class HaxeRepro {
 
 	var path:String;
 	var root:String = "./";
+	var lineNumber:Int = 0;
+	var stepping:Bool = false;
+	var displayNextResponse:Bool = false;
 	var filename:String = "repro.log";
 	var gitRef:String;
 	var logfile(get, never):String;
 	inline function get_logfile():String return Path.join([path, filename]);
 
-	static var extractor:Extractor = ~/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (>|<) (\w+)(?: #(\d+))?(?: "([^"]+)")?$/;
+	var started(get, never):Bool;
+	function get_started():Bool return client != null;
+
+	static var extractor = Extractor.init();
 
 	public static function main() new HaxeRepro();
 
@@ -94,6 +100,12 @@ class HaxeRepro {
 		done();
 	}
 
+	function pause(resume:Void->Void):Void {
+		Sys.print("Paused. Press <ENTER> to resume.");
+		Sys.stdin().readLine();
+		resume();
+	}
+
 	function cleanup() {
 		resetGit();
 		// No need to close the client, it's not stateful
@@ -109,6 +121,7 @@ class HaxeRepro {
 			return cleanup();
 		}
 
+		var l = ++lineNumber;
 		var line = file.readLine();
 		if (line == "") return next();
 
@@ -118,8 +131,10 @@ class HaxeRepro {
 				case '#'.code: return next();
 
 				// Surely we won't be running this for 1000+ years
-				case '2'.code if (extractor.match(line)):
+				case _ if (extractor.match(line)):
 					switch (extractor.entry) {
+						// Initialization
+
 						case Root:
 							root = extractor.method;
 							next();
@@ -135,53 +150,85 @@ class HaxeRepro {
 							next();
 
 						case DisplayArguments:
-							displayArguments = file.getData();
-							// TODO: should happen **after** git operations
-							// (change in haxe lsp)
-							start(next);
+							// Ignored for now; TODO: parse display arguments with new format
+							next();
 
 						case CheckoutGitRef:
-							Sys.println('> Checkout git ref');
+							Sys.println('$l: > Checkout git ref');
 							checkoutGitRef(file.readLine(), next);
 
 						case ApplyGitPatch:
-							Sys.println('> Apply git patch');
+							Sys.println('$l: > Apply git patch');
 							applyGitPatch(next);
 
 						case AddGitUntracked:
-							Sys.println('> Add untracked files');
+							Sys.println('$l: > Add untracked files');
 							addGitUntracked(next);
 
+						// Direct communication between client and server
+
 						case DisplayRequest:
+							if (!started) {
+								Sys.println('$l: repro script not started yet. Use "- start" before sending requests.');
+								Sys.exit(1);
+							}
+
 							displayRequest(extractor.id, extractor.method, file.getData(), next);
 
 						case ServerResponse:
 							var id = extractor.id;
 							var method = extractor.method;
-							if (id == null) Sys.println('< Server response for $method');
-							else Sys.println('< Server response for #$id $method');
+							if (id == null) Sys.println('$l: < Server response for $method');
+							else Sys.println('$l: < Server response for #$id $method');
 							// TODO: check against actual result
 							file.readLine();
 							next();
 
 						case CompilationResult:
 							var fail = extractor.method;
-							Sys.println('< Compilation result: ${fail == "" ? "ok" : "failed"}');
+							Sys.println('$l: < Compilation result: ${fail == "" ? "ok" : "failed"}');
 							// TODO: check against new result
 							while (file.readLine() != "EOF") {}
 							next();
 
+						// Editor events
+
 						case DidChangeTextDocument:
 							var event:DidChangeTextDocumentParams = file.getData();
-							Sys.println('Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
+							Sys.println('$l: Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
 							didChangeTextDocument(event, next);
 
+						case FileCreated | FileDeleted:
+							Sys.println('$l: Unhandled entry: ${extractor.entry}');
+							Sys.exit(1);
+
+						// Commands
+
+						case Start:
+							start(next);
+
+						case Pause:
+							pause(next);
+
+						case StepByStep:
+							stepping = extractor.id == 1;
+							next();
+
+						case DisplayResponse:
+							displayNextResponse = true;
+							next();
+
+						case Echo:
+							Sys.println('$l: ${extractor.method}');
+							next();
+
 						case entry:
-							throw 'Unhandled entry: $entry';
+							Sys.println('$l: Unhandled entry: $entry');
+							Sys.exit(1);
 					}
 
 				case _:
-					trace('Unexpected line:\n$line');
+					trace('$l: Unexpected line:\n$line');
 			}
 		} catch (e) {
 			console.error(e);
@@ -249,11 +296,12 @@ class HaxeRepro {
 		params:Array<String>,
 		next:Void->Void
 	):Void {
-		switch [id, request] {
-			case [null, _]: Sys.println('> $request');
-			case _: Sys.println('> Display request $request');
-			// case _: Sys.println('> #$id Display request $request');
-		}
+		var next = stepping ? pause.bind(next) : next;
+
+		if (id == null)
+			Sys.println('$lineNumber: > Display request "$request"');
+		else
+			Sys.println('$lineNumber: > Display request "$request" ($id)');
 
 		params = params.map(maybeConvertPath);
 		// trace(params);
@@ -269,11 +317,18 @@ class HaxeRepro {
 						// trace(res.stderr.toString());
 						// var result = Json.parse(res.stderr.toString().replace("\n", "")).result.result;
 						if (res.stderr.toString().indexOf('"result":{"items"') == -1)
-							Sys.println('=> Completion request failed');
+							Sys.println('$lineNumber: => Completion request failed');
 						// else trace('Completion request returned ${result.length} elements');
 
 					case "compilation":
-						if (res.hasError) Sys.println('=> Error:\n' + res.stderr.toString().trim());
+						if (res.hasError) Sys.println('$lineNumber: => Error:\n' + res.stderr.toString().trim());
+				}
+
+				if (displayNextResponse) {
+					var hasError = res.hasError ? " (has error)" : "";
+					Sys.println('$lineNumber: => Server response: $hasError');
+					Sys.println(res.stderr.toString());
+					displayNextResponse = false;
 				}
 
 				// TODO: make sure we use the actual display request order
@@ -334,6 +389,13 @@ enum abstract ReproEntry(String) {
 	var ServerResponse = "serverResponse";
 	var CompilationResult = "compilationResult";
 
+	// Commands
+	var Start = "start";
+	var Pause = "pause";
+	var Echo = "echo";
+	var StepByStep = "stepByStep";
+	var DisplayResponse = "displayResponse";
+
 	// Editor events
 	var DidChangeTextDocument = "didChangeTextDocument";
 	var FileCreated = "fileCreated";
@@ -342,6 +404,23 @@ enum abstract ReproEntry(String) {
 
 @:forward(match)
 abstract Extractor(EReg) from EReg {
+	private function new(r:EReg) this = r;
+	public static function init():Extractor
+		return new Extractor(
+			// ~/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (>|<) (\w+)(?: #(\d+))?(?: "([^"]+)")?$/
+			~/^(?:\+(\d+(?:\.\d+)?)s )?(>|<|-) (\w+)(?: (\d+))?(?: "([^"]+)")?(.*)$/
+		);
+
+	public var delta(get, never):Null<Float>;
+	function get_delta():Null<Float> {
+		var raw = this.matched(1);
+		if (raw == null) return null;
+		return Std.parseFloat(raw);
+	}
+
+	public var direction(get, never):ComDirection;
+	function get_direction():ComDirection return cast this.matched(2);
+
 	public var entry(get, never):ReproEntry;
 	function get_entry():ReproEntry return cast this.matched(3);
 
@@ -354,4 +433,13 @@ abstract Extractor(EReg) from EReg {
 
 	public var method(get, never):String;
 	function get_method():String return this.matched(5);
+
+	public var rest(get, never):String;
+	function get_rest():String return this.matched(6);
+}
+
+enum abstract ComDirection(String) to String {
+	var In = "<";
+	var Out = ">";
+	var None = "-";
 }
