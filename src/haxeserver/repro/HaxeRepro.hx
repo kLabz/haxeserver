@@ -168,13 +168,13 @@ class HaxeRepro {
 
 						// Direct communication between client and server
 
-						case DisplayRequest:
+						case ServerRequest:
 							if (!started) {
 								Sys.println('$l: repro script not started yet. Use "- start" before sending requests.');
 								Sys.exit(1);
 							}
 
-							displayRequest(extractor.id, extractor.method, file.getData(), next);
+							serverRequest(extractor.id, extractor.method, file.getData(), next);
 
 						case ServerResponse:
 							var id = extractor.id;
@@ -183,6 +183,15 @@ class HaxeRepro {
 							else Sys.println('$l: < Server response for #$id $method');
 							// TODO: check against actual result
 							file.readLine();
+							next();
+
+						case ServerError:
+							var id = extractor.id;
+							var method = extractor.method;
+							if (id == null) Sys.println('$l: < Server error while executing $method');
+							else Sys.println('$l: < Server error while executing #$id $method');
+							// TODO: check against actual error
+							while (file.readLine() != "EOF") {}
 							next();
 
 						case CompilationResult:
@@ -291,7 +300,7 @@ class HaxeRepro {
 		return a;
 	}
 
-	function displayRequest(
+	function serverRequest(
 		id:Null<Int>,
 		request:String,
 		params:Array<String>,
@@ -299,10 +308,8 @@ class HaxeRepro {
 	):Void {
 		var next = stepping ? pause.bind(next) : next;
 
-		if (id == null)
-			Sys.println('$lineNumber: > Server request "$request"');
-		else
-			Sys.println('$lineNumber: > Server request "$request" ($id)');
+		if (id == null) Sys.println('$lineNumber: > Server request "$request"');
+		else Sys.println('$lineNumber: > Server request "$request" ($id)');
 
 		params = params.map(maybeConvertPath);
 		// trace(params);
