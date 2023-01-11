@@ -2,6 +2,7 @@ package haxeserver.repro;
 
 import haxe.Json;
 import haxe.Rest;
+import haxe.display.Server;
 import haxe.io.Path;
 import js.Node;
 import js.Node.console;
@@ -351,9 +352,26 @@ class HaxeRepro {
 				}
 
 				if (displayNextResponse) {
-					var hasError = res.hasError ? " (has error)" : "";
-					Sys.println('$lineNumber: => Server response: $hasError');
-					Sys.println(res.stderr.toString());
+					var out:String = res.stderr.toString();
+
+					switch (request) {
+						case "server/contexts":
+							var res = haxe.Json.parse(out);
+							var contexts:Array<HaxeServerContext> = cast res.result.result;
+							for (c in contexts) {
+								Sys.println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)');
+								Sys.println('    signature: ${c.signature}');
+								// Sys.println('    defines: ${c.defines.map(d -> d.key).join(", ")}');
+							}
+
+						// TODO: other special case handling
+
+						case _:
+							var hasError = res.hasError ? " (has error)" : "";
+							Sys.println('$lineNumber: => Server response: $hasError');
+							Sys.println(out);
+					}
+
 					displayNextResponse = false;
 				}
 
