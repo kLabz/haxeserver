@@ -151,12 +151,12 @@ class HaxeRepro {
 
 						case DisplayArguments:
 							// Ignored for now; TODO: parse display arguments with new format
-							file.readLine();
+							file.nextLine();
 							next();
 
 						case CheckoutGitRef:
 							Sys.println('$l: > Checkout git ref');
-							checkoutGitRef(file.readLine(), next);
+							checkoutGitRef(file.nextLine(), next);
 
 						case ApplyGitPatch:
 							Sys.println('$l: > Apply git patch');
@@ -182,7 +182,7 @@ class HaxeRepro {
 							if (id == null) Sys.println('$l: < Server response for $method');
 							else Sys.println('$l: < Server response for #$id $method');
 							// TODO: check against actual result
-							file.readLine();
+							file.nextLine();
 							next();
 
 						case ServerError:
@@ -246,8 +246,18 @@ class HaxeRepro {
 		}
 	}
 
+	static function nextLine(file:FileInput):String {
+		// TODO: handle EOF
+		while (true) {
+			var ret = file.readLine();
+			if (ret == "") continue;
+			if (ret.charCodeAt(0) == '#'.code) continue;
+			return ret;
+		}
+	}
+
 	static function getData<T:{}>(file:FileInput):T
-		return cast Json.parse(file.readLine());
+		return cast Json.parse(file.nextLine());
 
 	function git(args:Rest<String>):String {
 		var proc = ChildProcess.spawnSync("git", args.toArray());
