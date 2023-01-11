@@ -42,6 +42,7 @@ class HaxeRepro {
 	var root:String = "./";
 	var lineNumber:Int = 0;
 	var stepping:Bool = false;
+	var abortOnFailure:Bool = false;
 	var displayNextResponse:Bool = false;
 	var filename:String = "repro.log";
 	var gitRef:String;
@@ -220,6 +221,10 @@ class HaxeRepro {
 						case Pause:
 							pause(next);
 
+						case AbortOnFailure:
+							abortOnFailure = extractor.id == null || extractor.id == 1;
+							next();
+
 						case StepByStep:
 							stepping = extractor.id == 1;
 							next();
@@ -331,15 +336,18 @@ class HaxeRepro {
 				// trace(res.hasError, res.stderr.trim());
 				switch (request) {
 					case "display/completion":
-						// trace(res);
-						// trace(res.stderr.toString());
-						// var result = Json.parse(res.stderr.toString().replace("\n", "")).result.result;
-						if (res.stderr.toString().indexOf('"result":{"items"') == -1)
+						// TODO: better check xD
+						if (res.stderr.toString().indexOf('"result":{"items"') == -1) {
 							Sys.println('$lineNumber: => Completion request failed');
+							if (abortOnFailure) Sys.exit(1);
 						// else trace('Completion request returned ${result.length} elements');
+						}
 
 					case "compilation":
-						if (res.hasError) Sys.println('$lineNumber: => Error:\n' + res.stderr.toString().trim());
+						if (res.hasError) {
+							Sys.println('$lineNumber: => Error:\n' + res.stderr.toString().trim());
+							if (abortOnFailure) Sys.exit(1);
+						}
 				}
 
 				if (displayNextResponse) {
