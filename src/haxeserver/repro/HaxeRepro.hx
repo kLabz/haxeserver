@@ -49,6 +49,7 @@ class HaxeRepro {
 	var displayNextResponse:Bool = false;
 	var filename:String = "repro.log";
 	var gitRef:String;
+	var gitStash:Bool = false;
 	var logfile(get, never):String;
 	inline function get_logfile():String return Path.join([path, filename]);
 
@@ -290,7 +291,11 @@ class HaxeRepro {
 		gitRef = git("rev-parse", "--abbrev-ref", "HEAD");
 		if (gitRef == "HEAD") gitRef = git("rev-parse", "--short", "HEAD");
 
-		git("stash", "save", "--include-untracked", "Stash before repro");
+		if (git("status", "--porcelain").trim() != "") {
+			gitStash = true;
+			git("stash", "save", "--include-untracked", "Stash before repro");
+		}
+
 		git("checkout", ref);
 		next();
 	}
@@ -310,7 +315,7 @@ class HaxeRepro {
 		git("clean", "-f", "-d");
 		git("reset", "--hard");
 		git("checkout", gitRef);
-		try git("stash", "pop") catch(_) {}
+		if (gitStash) git("stash", "pop");
 	}
 
 	function maybeConvertPath(a:String):String {
