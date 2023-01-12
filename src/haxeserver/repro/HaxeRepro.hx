@@ -30,6 +30,7 @@ using haxeserver.repro.HaxeRepro;
 
 class HaxeRepro {
 	static inline var REPRO_PATCHFILE = 'status.patch';
+	static inline var UNTRACKED_DIR:String = "untracked";
 	static inline var NEWFILES_DIR:String = "newfiles";
 
 	var userConfig:UserConfig;
@@ -306,7 +307,28 @@ class HaxeRepro {
 	}
 
 	function addGitUntracked(next:Void->Void):Void {
-		trace('TODO: apply untracked');
+		var untracked = Path.join([path, UNTRACKED_DIR]);
+
+		function copyUntracked(root:String) {
+			var dir = Path.join([untracked, root]);
+			for (entry in FileSystem.readDirectory(dir)) {
+				var entryPath = Path.join([untracked, root, entry]);
+
+				if (FileSystem.isDirectory(entryPath)) {
+					copyUntracked(Path.join([root, entry]));
+				} else {
+					var target = Path.join([root, entry]);
+					var targetDir = Path.directory(target);
+
+					if (targetDir != "" && !FileSystem.exists(targetDir))
+						FileSystem.createDirectory(targetDir);
+
+					File.saveContent(target, File.getContent(entryPath));
+				}
+			}
+		}
+
+		copyUntracked(".");
 		next();
 	}
 
