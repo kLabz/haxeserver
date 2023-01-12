@@ -18,6 +18,7 @@ import haxeLanguageServer.DisplayServerConfig;
 import haxeLanguageServer.documents.HxTextDocument;
 import haxeserver.process.HaxeServerProcessConnect;
 import languageServerProtocol.protocol.Protocol.DidChangeTextDocumentParams;
+import languageServerProtocol.protocol.Protocol.FileEvent;
 
 // TODO: open issue and/or improve error
 // Module js.Node does not define type console
@@ -29,6 +30,7 @@ using haxeserver.repro.HaxeRepro;
 
 class HaxeRepro {
 	static inline var REPRO_PATCHFILE = 'status.patch';
+	static inline var NEWFILES_DIR:String = "newfiles";
 
 	var userConfig:UserConfig;
 	var displayServer:DisplayServerConfig;
@@ -128,7 +130,6 @@ class HaxeRepro {
 		if (line == "") return next();
 
 		try {
-			// TODO: add support for "breakpoints" (more like pause points...)
 			switch (line.charCodeAt(0)) {
 				case '#'.code: return next();
 
@@ -210,9 +211,23 @@ class HaxeRepro {
 							Sys.println('$l: Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
 							didChangeTextDocument(event, next);
 
-						case FileCreated | FileDeleted:
-							Sys.println('$l: Unhandled entry: ${extractor.entry}');
-							Sys.exit(1);
+						case FileCreated:
+							var id = extractor.id;
+							var event:FileEvent = file.getData();
+							var content = id == 0
+								? ""
+								: File.getContent(Path.join([path, NEWFILES_DIR, '$id.contents']));
+
+							var path = maybeConvertPath(event.uri.toFsPath().toString());
+							FileSystem.createDirectory(Path.directory(path));
+							File.saveContent(path, content);
+							next();
+
+						case FileDeleted:
+							var event:FileEvent = file.getData();
+							var path = maybeConvertPath(event.uri.toFsPath().toString());
+							FileSystem.deleteFile(path);
+							next();
 
 						// Commands
 
@@ -408,8 +423,7 @@ class HaxeRepro {
 	}
 
 	function didChangeTextDocument(event:DidChangeTextDocumentParams, next:Void->Void):Void {
-		// TODO: map absolute path to relative paths
-		var path = event.textDocument.uri.toFsPath().toString();
+		var path = maybeConvertPath(event.textDocument.uri.toFsPath().toString());
 		var content = File.getContent(path);
 		var doc = new HxTextDocument(event.textDocument.uri, "", 0, content);
 		doc.update(event.contentChanges, event.textDocument.version);
