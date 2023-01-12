@@ -44,7 +44,7 @@ class HaxeRepro {
 
 	var path:String;
 	var root:String = "./";
-	var lineNumber:Int = 0;
+	var lineNumber:Int = -1;
 	var stepping:Bool = false;
 	var abortOnFailure:Bool = false;
 	var displayNextResponse:Bool = false;
@@ -127,9 +127,9 @@ class HaxeRepro {
 			return cleanup();
 		}
 
-		var l = ++lineNumber;
-		var line = file.readLine();
+		var line = getLine();
 		if (line == "") return next();
+		var l = lineNumber;
 
 		try {
 			switch (line.charCodeAt(0)) {
@@ -146,22 +146,22 @@ class HaxeRepro {
 
 						// TODO: actually use this
 						case UserConfig:
-							userConfig = file.getData();
+							userConfig = getData();
 							next();
 
 						// TODO: actually use this
 						case DisplayServer:
-							displayServer = file.getData();
+							displayServer = getData();
 							next();
 
 						case DisplayArguments:
 							// Ignored for now; TODO: parse display arguments with new format
-							file.nextLine();
+							nextLine();
 							next();
 
 						case CheckoutGitRef:
 							Sys.println('$l: > Checkout git ref');
-							checkoutGitRef(file.nextLine(), next);
+							checkoutGitRef(nextLine(), next);
 
 						case ApplyGitPatch:
 							Sys.println('$l: > Apply git patch');
@@ -179,7 +179,7 @@ class HaxeRepro {
 								Sys.exit(1);
 							}
 
-							serverRequest(extractor.id, extractor.method, file.getData(), next);
+							serverRequest(extractor.id, extractor.method, getData(), next);
 
 						case ServerResponse:
 							var id = extractor.id;
@@ -187,7 +187,7 @@ class HaxeRepro {
 							if (id == null) Sys.println('$l: < Server response for $method');
 							else Sys.println('$l: < Server response for #$id $method');
 							// TODO: check against actual result
-							file.nextLine();
+							nextLine();
 							next();
 
 						case ServerError:
@@ -196,26 +196,26 @@ class HaxeRepro {
 							if (id == null) Sys.println('$l: < Server error while executing $method');
 							else Sys.println('$l: < Server error while executing #$id $method');
 							// TODO: check against actual error
-							while (file.readLine() != "EOF") {}
+							while (getLine() != "EOF") {}
 							next();
 
 						case CompilationResult:
 							var fail = extractor.method;
 							Sys.println('$l: < Compilation result: ${fail == "" ? "ok" : "failed"}');
 							// TODO: check against new result
-							while (file.readLine() != "EOF") {}
+							while (getLine() != "EOF") {}
 							next();
 
 						// Editor events
 
 						case DidChangeTextDocument:
-							var event:DidChangeTextDocumentParams = file.getData();
+							var event:DidChangeTextDocumentParams = getData();
 							Sys.println('$l: Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
 							didChangeTextDocument(event, next);
 
 						case FileCreated:
 							var id = extractor.id;
-							var event:FileEvent = file.getData();
+							var event:FileEvent = getData();
 							var content = id == 0
 								? ""
 								: File.getContent(Path.join([path, NEWFILES_DIR, '$id.contents']));
@@ -226,7 +226,7 @@ class HaxeRepro {
 							next();
 
 						case FileDeleted:
-							var event:FileEvent = file.getData();
+							var event:FileEvent = getData();
 							var path = maybeConvertPath(event.uri.toFsPath().toString());
 							FileSystem.deleteFile(path);
 							next();
@@ -269,18 +269,23 @@ class HaxeRepro {
 		}
 	}
 
-	static function nextLine(file:FileInput):String {
+	function getLine():String {
+		lineNumber++;
+		return file.readLine();
+	}
+
+	function nextLine():String {
 		// TODO: handle EOF
 		while (true) {
-			var ret = file.readLine();
+			var ret = getLine();
 			if (ret == "") continue;
 			if (ret.charCodeAt(0) == '#'.code) continue;
 			return ret;
 		}
 	}
 
-	static function getData<T:{}>(file:FileInput):T
-		return cast Json.parse(file.nextLine());
+	function getData<T:{}>():T
+		return cast Json.parse(nextLine());
 
 	function git(args:Rest<String>):String {
 		var proc = ChildProcess.spawnSync("git", args.toArray());
