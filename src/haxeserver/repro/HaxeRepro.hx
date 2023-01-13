@@ -13,6 +13,7 @@ import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
 
+import haxeLanguageServer.ComDirection;
 import haxeLanguageServer.Configuration;
 import haxeLanguageServer.DisplayServerConfig;
 import haxeLanguageServer.documents.HxTextDocument;
@@ -135,9 +136,11 @@ class HaxeRepro {
 			switch (line.charCodeAt(0)) {
 				case '#'.code: return next();
 
-				// Surely we won't be running this for 1000+ years
 				case _ if (extractor.match(line)):
 					switch (extractor.entry) {
+						// Comment with timings
+						case _ if (extractor.direction == Ignored): return next();
+
 						// Initialization
 
 						case Root:
