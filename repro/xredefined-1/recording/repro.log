@@ -1,0 +1,19 @@
+# Extracted from https://github.com/HaxeFoundation/haxe/issues/8368#issuecomment-498606497
+# Currently reproduces on 4.2.x, `development` and `fix/xredefined-1`
+
+- echo "Trigger X redefined from X"
+- echo "----------------------------------------------------"
+- root "/git/haxe-libs/haxeserver/repro/xredefined-1"
+- abortOnFailure
+
+- start
+
+- assert success
+- displayResponse
+> serverRequest "compilation"
+["build.hxml"]
+
+- assert fail
+- displayResponse
+> serverRequest "compilation"
+["build.hxml"]
