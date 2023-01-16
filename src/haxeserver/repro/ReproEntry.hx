@@ -17,6 +17,7 @@ enum abstract ReproEntry(String) {
 	var CompilationResult = "compilationResult";
 
 	// Commands
+	var Assert = "assert";
 	var Start = "start";
 	var Pause = "pause";
 	var Echo = "echo";

@@ -15,7 +15,6 @@ import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
 
-import haxeLanguageServer.ComDirection;
 import haxeLanguageServer.Configuration;
 import haxeLanguageServer.DisplayServerConfig;
 import haxeLanguageServer.documents.HxTextDocument;
@@ -36,42 +35,57 @@ class HaxeRepro {
 	static inline var UNTRACKED_DIR:String = "untracked";
 	static inline var NEWFILES_DIR:String = "newfiles";
 
+	// Recording configuration
+	var root:String = "./";
 	var userConfig:UserConfig;
 	var displayServer:DisplayServerConfig;
 	var displayArguments:Array<String>;
-
-	var port:Int = 7000;
-	var file:FileInput;
-	var server:ChildProcessObject;
-	var client:HaxeServerAsync;
-
-	var path:String;
-	var root:String = "./";
-	var lineNumber:Int = -1;
-	var stepping:Bool = false;
-	var abortOnFailure:Bool = false;
-	var displayNextResponse:Bool = false;
-	var filename:String = "repro.log";
 	var gitRef:String;
-	var gitStash:Bool = false;
+
+	// Replay configuration
+	var path:String;
+	var silent:Bool = false;
+	var port:Int = 7000;
+	var filename:String = "repro.log";
+
 	var logfile(get, never):String;
 	inline function get_logfile():String return Path.join([path, filename]);
 
+	// Replay state
+	var lineNumber:Int = -1;
+	var gitStash:Bool = false;
+	var stepping:Bool = false;
+	var abortOnFailure:Bool = false;
+	var displayNextResponse:Bool = false;
+	var currentAssert:Assertion = None;
+	var assertions = new Map<Int, AssertionItem>();
+
+	/**
+	 * When `abortOnFailure` hit a failure;
+	 * We only continue to gather failed assertions for reporting.
+	 */
+	var aborted:Bool = false;
+
+	var file:FileInput;
+	var extractor = Extractor.init();
+	var server:ChildProcessObject;
+	var client:HaxeServerAsync;
 	var started(get, never):Bool;
 	function get_started():Bool return client != null;
 
-	static var extractor = Extractor.init();
-
 	public static function main() new HaxeRepro();
+	public static function plural(nb:Int):String return nb > 1 ? "s" : "";
 
 	function new() {
 		var handler = hxargs.Args.generate([
 			@doc("Path to the repro dump directory (mandatory)")
 			["--path"] => p -> path = p,
-			@doc("Log file to use in the dump directory. Default is repro.log")
+			@doc("Log file to use in the dump directory. Default is `repro.log`.")
 			["--file"] => f -> filename = f,
-			@doc("Port to use internally for haxe server. Should *not* refer to an existing server. Default is 7000")
+			@doc("Port to use internally for haxe server. Should *not* refer to an existing server. Default is `7000`.")
 			["--port"] => p -> port = p,
+			@doc("Only show results.")
+			["--silent"] => () -> silent = true,
 			_ => a -> {
 				Sys.println('Unknown argument $a');
 				Sys.exit(1);
@@ -104,35 +118,51 @@ class HaxeRepro {
 
 	function start(done:Void->Void):Void {
 		server = ChildProcess.spawn("haxe", ["--wait", Std.string(port)]);
+		Sys.sleep(0.5);
+
 		var process = new HaxeServerProcessConnect("haxe", port, []);
 		client = new HaxeServerAsync(() -> process);
 		done();
 	}
 
 	function pause(resume:Void->Void):Void {
+		if (aborted) resume();
 		Sys.print("Paused. Press <ENTER> to resume.");
 		Sys.stdin().readLine();
 		resume();
 	}
 
-	function exit(code:Int = 1):Void {
+	function done():Void {
 		cleanup();
-		Sys.exit(code);
-	}
 
-	function cleanup():Void {
-		resetGit();
-		// No need to close the client, it's not stateful
-		if (server != null) server.kill();
+		if (assertions.iterator().hasNext()) {
+			var nb = 0;
+			var nbFail = 0;
+			var detailed = new StringBuf();
+			var summary = new StringBuf();
+
+			for (l => res in assertions) {
+				nb++;
+				summary.add(res.success ? "." : "F");
+
+				if (!res.success) {
+					nbFail++;
+					// TODO: better output
+					detailed.add('$l: assertion failed ${res.assert} at line ${res.lineApplied}\n');
+				}
+			}
+
+			Sys.println('$nb assertion${nb.plural()} with $nbFail failure${nbFail.plural()}: ${summary.toString()}');
+			if (!silent) Sys.println(detailed.toString());
+			if (nbFail > 0) Sys.exit(1);
+		} else {
+			Sys.println('Done.');
+		}
 	}
 
 	function next() {
 		var next = Node.process.nextTick.bind(next, []);
-
-		if (file.eof()) {
-			Sys.println('Done.');
-			return cleanup();
-		}
+		if (file.eof()) return done();
 
 		var line = getLine();
 		if (line == "") return next();
@@ -143,9 +173,34 @@ class HaxeRepro {
 				case '#'.code: return next();
 
 				case _ if (extractor.match(line)):
+					// trace(l, extractor.entry);
+
 					switch (extractor.entry) {
 						// Comment with timings
-						case _ if (extractor.direction == Ignored): return next();
+						case _ if (extractor.direction == Ignored):
+							return next();
+
+						// Assertions
+						case Assert:
+							clearAssert();
+							currentAssert = switch (cast extractor.rest :AssertionKind) {
+								case null:
+									Sys.println('$l: Invalid assertion "$line"');
+									exit(1);
+									None;
+
+								case ExpectReached:
+									assertionResult(l, !aborted, ExpectReached(l));
+
+								case ExpectUnreachable:
+									assertionResult(l, aborted, ExpectUnreachable(l));
+
+								case ExpectFailure: ExpectFailure(l);
+								case ExpectSuccess: ExpectSuccess(l);
+								case ExpectItemCount: ExpectItemCount(l, extractor.id);
+							}
+
+							next();
 
 						// Initialization
 
@@ -169,53 +224,61 @@ class HaxeRepro {
 							next();
 
 						case CheckoutGitRef:
-							Sys.println('$l: > Checkout git ref');
+							println('$l: > Checkout git ref');
 							checkoutGitRef(nextLine(), next);
 
 						case ApplyGitPatch:
-							Sys.println('$l: > Apply git patch');
+							println('$l: > Apply git patch');
 							applyGitPatch(next);
 
 						case AddGitUntracked:
-							Sys.println('$l: > Add untracked files');
+							println('$l: > Add untracked files');
 							addGitUntracked(next);
 
 						// Direct communication between client and server
 
 						case ServerRequest:
 							if (!started) {
-								Sys.println('$l: repro script not started yet. Use "- start" before sending requests.');
+								println('$l: repro script not started yet. Use "- start" before sending requests.');
 								exit(1);
 							}
 
-							serverRequest(extractor.id, extractor.method, getData(), next);
+							if (!aborted) {
+								serverRequest(l, extractor.id, extractor.method, getData(), next);
+							} else {
+								nextLine();
+								next();
+							}
 
 						case ServerResponse:
-							var id = extractor.id;
-							var method = extractor.method;
-							var idDesc = id == null ? '' : ' #$id';
-							var methodDesc = method == null ? '' : ' "$method"';
-							var desc = (id != null || method != null) ? " for" : "";
-							Sys.println('$l: < Server response${desc}${idDesc}${methodDesc}');
+							// var id = extractor.id;
+							// var method = extractor.method;
+							// Disabled printing for now as it can be confused with actual result from repro...
+							// var idDesc = id == null ? '' : ' #$id';
+							// var methodDesc = method == null ? '' : ' "$method"';
+							// var desc = (id != null || method != null) ? " for" : "";
+							// println('$l: < Server response${desc}${idDesc}${methodDesc}');
 							// TODO: check against actual result
 							nextLine();
 							next();
 
 						case ServerError:
-							var id = extractor.id;
-							var method = extractor.method;
-							var idDesc = id == null ? '' : ' #$id';
-							var methodDesc = method == null ? '' : ' "$method"';
-							if (id == null && method == null) methodDesc = " request";
-							Sys.println('$l: < Server error while executing${idDesc}${methodDesc}');
+							// var id = extractor.id;
+							// var method = extractor.method;
+							// Disabled printing for now as it can be confused with actual result from repro...
+							// var idDesc = id == null ? '' : ' #$id';
+							// var methodDesc = method == null ? '' : ' "$method"';
+							// if (id == null && method == null) methodDesc = " request";
+							// println('$l: < Server error while executing${idDesc}${methodDesc}');
 							// TODO: check against actual error
 							getFileContent();
 							next();
 
 						case CompilationResult:
-							var fail = extractor.method == "" ? "ok" : "failed";
-							Sys.println('$l: < Compilation result: $fail');
-							// TODO: check against new result
+							// Disabled printing for now as it can be confused with actual result from repro...
+							// var fail = extractor.method == "" ? "ok" : "failed";
+							// println('$l: < Compilation result: $fail');
+							// TODO: check against actual result
 							getFileContent();
 							next();
 
@@ -223,7 +286,7 @@ class HaxeRepro {
 
 						case DidChangeTextDocument:
 							var event:DidChangeTextDocumentParams = getData();
-							Sys.println('$l: Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
+							println('$l: Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
 							didChangeTextDocument(event, next);
 
 						case FileCreated:
@@ -265,11 +328,11 @@ class HaxeRepro {
 							next();
 
 						case Echo:
-							Sys.println('$l: ${extractor.method}');
+							println('$l: ${extractor.method}');
 							next();
 
 						case entry:
-							Sys.println('$l: Unhandled entry: $entry');
+							println('$l: Unhandled entry: $entry');
 							exit(1);
 					}
 
@@ -281,6 +344,46 @@ class HaxeRepro {
 			cleanup();
 		}
 	}
+
+	function clearAssert():Void {
+		// Set previous assertion as failed (if any)
+		currentAssert = switch (currentAssert) {
+			case None: None;
+			// TODO: add logs if !silent
+			case _: assertionResult(null, false);
+		}
+	}
+
+	function assertionResult(l:Null<Int>, result:Null<Bool>, ?assert:Assertion):Assertion {
+		if (assert == null) assert = currentAssert;
+
+		assertions.set(switch (assert) {
+			case ExpectReached(l) | ExpectUnreachable(l) | ExpectFailure(l)
+				 | ExpectSuccess(l) | ExpectItemCount(l, _): l;
+
+			case None: throw 'Invalid assertion result';
+		}, {
+			assert: assert,
+			lineApplied: l,
+			success: result
+		});
+
+		currentAssert = None;
+		return currentAssert;
+	}
+
+	function cleanup():Void {
+		resetGit();
+		// No need to close the client, it's not stateful
+		if (server != null) server.kill();
+	}
+
+	function exit(code:Int = 1):Void {
+		cleanup();
+		Sys.exit(code);
+	}
+
+	function println(s:String):Void if (!aborted && !silent) Sys.println(s);
 
 	function getLine():String {
 		lineNumber++;
@@ -394,15 +497,21 @@ class HaxeRepro {
 	}
 
 	function serverRequest(
+		l:Int,
 		id:Null<Int>,
 		request:String,
 		params:Array<String>,
-		next:Void->Void
+		cb:Void->Void
 	):Void {
-		var next = stepping ? pause.bind(next) : next;
+		var next = function() {
+			clearAssert();
+
+			if (stepping) pause(cb);
+			else cb();
+		}
 
 		var idDesc = id == null ? '' : ' #$id';
-		Sys.println('$lineNumber: > Server request$idDesc "$request"');
+		println('$l: > Server request$idDesc "$request"');
 
 		params = params.map(maybeConvertPath);
 		// trace(params);
@@ -416,8 +525,8 @@ class HaxeRepro {
 				// TODO: compare with serverResponse
 				switch (request) {
 					case "compilation":
-						if (hasError) Sys.println('$lineNumber: => Compilation error:\n' + out.trim());
-						else if (displayNextResponse) Sys.println(out.trim());
+						if (hasError) println('$l: => Compilation error:\n' + out.trim());
+						else if (displayNextResponse) println(out.trim());
 
 					case _:
 						switch (extractResult(out)) {
@@ -428,20 +537,26 @@ class HaxeRepro {
 										if (res.result == null) hasError = true;
 										else {
 											hasError = false;
+											var nbItems = res.result.items.length;
+
 											if (displayNextResponse) {
-												var nbItems = res.result.items.length;
-												Sys.println('$lineNumber: => Completion request returned $nbItems items');
+												println('$l => Completion request returned $nbItems items');
+											}
+
+											switch (currentAssert) {
+												case ExpectItemCount(_, c): assertionResult(l, c == nbItems);
+												case _:
 											}
 										}
 
-										if (hasError) Sys.println('$lineNumber: => Completion request failed');
+										if (hasError) println('$l: => Completion request failed');
 
 									case "server/contexts" if (displayNextResponse):
 										var contexts:Array<HaxeServerContext> = cast res.result.result;
 										for (c in contexts) {
-											Sys.println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)');
-											Sys.println('    signature: ${c.signature}');
-											// Sys.println('    defines: ${c.defines.map(d -> d.key).join(", ")}');
+											println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)');
+											println('    signature: ${c.signature}');
+											// println('    defines: ${c.defines.map(d -> d.key).join(", ")}');
 										}
 
 									// TODO: other special case handling
@@ -449,30 +564,36 @@ class HaxeRepro {
 									case _:
 										if (hasError || displayNextResponse) {
 											var hasError = hasError ? "(has error)" : "";
-											Sys.println('$lineNumber: => Server response: $hasError');
+											println('$l: => Server response: $hasError');
 										}
 
-										if (displayNextResponse) Sys.println(res);
+										if (displayNextResponse) println(Std.string(res));
 								}
 
 							case Raw(out):
 								if (hasError || displayNextResponse) {
 									var hasError = res.hasError ? "(has error)" : "";
-									Sys.println('$lineNumber: => Server response: $hasError');
+									println('$l: => Server response: $hasError');
 								}
 
-								if (displayNextResponse) Sys.println(out);
+								if (displayNextResponse) println(out);
 
 							case Empty:
 								if (request == "display/completion") hasError = true;
-								if (hasError || displayNextResponse) Sys.println('$lineNumber: => Empty server response');
+								if (hasError || displayNextResponse) println('$l: => Empty server response');
 						}
+				}
+
+				switch (currentAssert) {
+					case ExpectFailure(_): assertionResult(l, hasError);
+					case ExpectSuccess(_): assertionResult(l, !hasError);
+					case _:
 				}
 
 				if (displayNextResponse) displayNextResponse = false;
 				if (hasError && abortOnFailure) {
-					Sys.println('Failure detected, aborting rest of script.');
-					exit(1);
+					println('Failure detected, aborting rest of script.');
+					aborted = true;
 				}
 
 				// TODO: make sure we use the actual display request order
@@ -529,6 +650,29 @@ class HaxeRepro {
 		File.saveContent(path, doc.content);
 		next();
 	}
+}
+
+typedef AssertionItem = {
+	var assert:Assertion;
+	@:optional var lineApplied:Int;
+	@:optional var success:Bool;
+}
+
+enum Assertion {
+	None;
+	ExpectReached(line:Int);
+	ExpectUnreachable(line:Int);
+	ExpectFailure(line:Int);
+	ExpectSuccess(line:Int);
+	ExpectItemCount(line:Int, count:Int);
+}
+
+enum abstract AssertionKind(String) {
+	var ExpectReached = "true";
+	var ExpectUnreachable = "false";
+	var ExpectFailure = "fail";
+	var ExpectSuccess = "success";
+	var ExpectItemCount = "items";
 }
 
 enum ResponseKind<T:{}> {

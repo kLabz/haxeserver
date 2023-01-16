@@ -7,7 +7,7 @@ abstract Extractor(EReg) from EReg {
 	private function new(r:EReg) this = r;
 	public static function init():Extractor
 		return new Extractor(
-			~/^(?:\+(\d+(?:\.\d+)?)s )?(>|<|-|#) (\w+)(?: (\d+))?(?: "([^"]+)")?(.*)$/
+			~/^(?:\+(\d+(?:\.\d+)?)s )?(>|<|-|#) (\w+)(?: (\d+))?(?: "([^"]+)")?(?: (.+))?$/
 		);
 
 	public var delta(get, never):Null<Float>;
