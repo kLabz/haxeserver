@@ -2,6 +2,8 @@ package haxeserver.repro;
 
 import haxe.Json;
 import haxe.Rest;
+import haxe.display.Display;
+import haxe.display.Protocol;
 import haxe.display.Server;
 import haxe.io.Path;
 import js.Node;
@@ -113,11 +115,15 @@ class HaxeRepro {
 		resume();
 	}
 
-	function cleanup() {
+	function exit(code:Int = 1):Void {
+		cleanup();
+		Sys.exit(code);
+	}
+
+	function cleanup():Void {
 		resetGit();
 		// No need to close the client, it's not stateful
 		if (server != null) server.kill();
-
 	}
 
 	function next() {
@@ -179,7 +185,7 @@ class HaxeRepro {
 						case ServerRequest:
 							if (!started) {
 								Sys.println('$l: repro script not started yet. Use "- start" before sending requests.');
-								Sys.exit(1);
+								exit(1);
 							}
 
 							serverRequest(extractor.id, extractor.method, getData(), next);
@@ -187,8 +193,10 @@ class HaxeRepro {
 						case ServerResponse:
 							var id = extractor.id;
 							var method = extractor.method;
-							if (id == null) Sys.println('$l: < Server response for $method');
-							else Sys.println('$l: < Server response for #$id $method');
+							var idDesc = id == null ? '' : ' #$id';
+							var methodDesc = method == null ? '' : ' "$method"';
+							var desc = (id != null || method != null) ? " for" : "";
+							Sys.println('$l: < Server response${desc}${idDesc}${methodDesc}');
 							// TODO: check against actual result
 							nextLine();
 							next();
@@ -196,17 +204,19 @@ class HaxeRepro {
 						case ServerError:
 							var id = extractor.id;
 							var method = extractor.method;
-							if (id == null) Sys.println('$l: < Server error while executing $method');
-							else Sys.println('$l: < Server error while executing #$id $method');
+							var idDesc = id == null ? '' : ' #$id';
+							var methodDesc = method == null ? '' : ' "$method"';
+							if (id == null && method == null) methodDesc = " request";
+							Sys.println('$l: < Server error while executing${idDesc}${methodDesc}');
 							// TODO: check against actual error
-							while (getLine() != "EOF") {}
+							getFileContent();
 							next();
 
 						case CompilationResult:
-							var fail = extractor.method;
-							Sys.println('$l: < Compilation result: ${fail == "" ? "ok" : "failed"}');
+							var fail = extractor.method == "" ? "ok" : "failed";
+							Sys.println('$l: < Compilation result: $fail');
 							// TODO: check against new result
-							while (getLine() != "EOF") {}
+							getFileContent();
 							next();
 
 						// Editor events
@@ -260,7 +270,7 @@ class HaxeRepro {
 
 						case entry:
 							Sys.println('$l: Unhandled entry: $entry');
-							Sys.exit(1);
+							exit(1);
 					}
 
 				case _:
@@ -275,6 +285,23 @@ class HaxeRepro {
 	function getLine():String {
 		lineNumber++;
 		return file.readLine();
+	}
+
+	function getFileContent():String {
+		var next = nextLine();
+
+		if (next == "<<EOF") {
+			var ret = new StringBuf();
+			while (true) {
+				var line = getLine();
+				if (line == "EOF") break;
+				ret.add(line);
+				ret.add("\n");
+			}
+			return ret.toString();
+		}
+
+		return next;
 	}
 
 	function nextLine():String {
@@ -374,8 +401,8 @@ class HaxeRepro {
 	):Void {
 		var next = stepping ? pause.bind(next) : next;
 
-		if (id == null) Sys.println('$lineNumber: > Server request "$request"');
-		else Sys.println('$lineNumber: > Server request "$request" ($id)');
+		var idDesc = id == null ? '' : ' #$id';
+		Sys.println('$lineNumber: > Server request$idDesc "$request"');
 
 		params = params.map(maybeConvertPath);
 		// trace(params);
@@ -383,46 +410,69 @@ class HaxeRepro {
 		client.rawRequest(
 			params,
 			res -> {
-				// TODO: compare with serverResponse
-				// trace(res.hasError, res.stderr.trim());
-				switch (request) {
-					case "display/completion":
-						// TODO: better check xD
-						if (res.stderr.toString().indexOf('"result":{"items"') == -1) {
-							Sys.println('$lineNumber: => Completion request failed');
-							if (abortOnFailure) Sys.exit(1);
-						// else trace('Completion request returned ${result.length} elements');
-						}
+				var hasError = res.hasError;
+				var out:String = res.stderr.toString();
 
+				// TODO: compare with serverResponse
+				switch (request) {
 					case "compilation":
-						if (res.hasError) {
-							Sys.println('$lineNumber: => Error:\n' + res.stderr.toString().trim());
-							if (abortOnFailure) Sys.exit(1);
+						if (hasError) Sys.println('$lineNumber: => Compilation error:\n' + out.trim());
+						else if (displayNextResponse) Sys.println(out.trim());
+
+					case _:
+						switch (extractResult(out)) {
+							case JsonResult(res):
+								switch (request) {
+									case "display/completion":
+										var res:CompletionResult = cast res.result;
+										if (res.result == null) hasError = true;
+										else {
+											hasError = false;
+											if (displayNextResponse) {
+												var nbItems = res.result.items.length;
+												Sys.println('$lineNumber: => Completion request returned $nbItems items');
+											}
+										}
+
+										if (hasError) Sys.println('$lineNumber: => Completion request failed');
+
+									case "server/contexts" if (displayNextResponse):
+										var contexts:Array<HaxeServerContext> = cast res.result.result;
+										for (c in contexts) {
+											Sys.println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)');
+											Sys.println('    signature: ${c.signature}');
+											// Sys.println('    defines: ${c.defines.map(d -> d.key).join(", ")}');
+										}
+
+									// TODO: other special case handling
+
+									case _:
+										if (hasError || displayNextResponse) {
+											var hasError = hasError ? "(has error)" : "";
+											Sys.println('$lineNumber: => Server response: $hasError');
+										}
+
+										if (displayNextResponse) Sys.println(res);
+								}
+
+							case Raw(out):
+								if (hasError || displayNextResponse) {
+									var hasError = res.hasError ? "(has error)" : "";
+									Sys.println('$lineNumber: => Server response: $hasError');
+								}
+
+								if (displayNextResponse) Sys.println(out);
+
+							case Empty:
+								if (request == "display/completion") hasError = true;
+								if (hasError || displayNextResponse) Sys.println('$lineNumber: => Empty server response');
 						}
 				}
 
-				if (displayNextResponse) {
-					var out:String = res.stderr.toString();
-
-					switch (request) {
-						case "server/contexts":
-							var res = haxe.Json.parse(out);
-							var contexts:Array<HaxeServerContext> = cast res.result.result;
-							for (c in contexts) {
-								Sys.println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)');
-								Sys.println('    signature: ${c.signature}');
-								// Sys.println('    defines: ${c.defines.map(d -> d.key).join(", ")}');
-							}
-
-						// TODO: other special case handling
-
-						case _:
-							var hasError = res.hasError ? " (has error)" : "";
-							Sys.println('$lineNumber: => Server response: $hasError');
-							Sys.println(out);
-					}
-
-					displayNextResponse = false;
+				if (displayNextResponse) displayNextResponse = false;
+				if (hasError && abortOnFailure) {
+					Sys.println('Failure detected, aborting rest of script.');
+					exit(1);
 				}
 
 				// TODO: make sure we use the actual display request order
@@ -457,6 +507,20 @@ class HaxeRepro {
 		// });
 	}
 
+	function extractResult<T:{}>(out:String):ResponseKind<T> {
+		var lines = out.split("\n");
+		var last = lines.pop();
+		switch [lines.length, last] {
+			case [1, ""]:
+				var json = try Json.parse(lines[0]) catch(_) null;
+				return JsonResult(json);
+
+			case [n, _]:
+				var out = lines.join("\n") + (last == "" ? "" : '\n$last');
+				return out == "" ? Empty : Raw(out);
+		}
+	}
+
 	function didChangeTextDocument(event:DidChangeTextDocumentParams, next:Void->Void):Void {
 		var path = maybeConvertPath(event.textDocument.uri.toFsPath().toString());
 		var content = File.getContent(path);
@@ -465,4 +529,10 @@ class HaxeRepro {
 		File.saveContent(path, doc.content);
 		next();
 	}
+}
+
+enum ResponseKind<T:{}> {
+	JsonResult(json:Response<T>);
+	Raw(out:String);
+	Empty;
 }
