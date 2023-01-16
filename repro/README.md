@@ -19,6 +19,14 @@ haxe repro.hxml
 
 ## Using the tool
 
+```
+$ node repro/repro.js
+[--path] <p> : Path to the repro dump directory (mandatory)
+[--file] <f> : Log file to use in the dump directory. Default is `repro.log`.
+[--port] <p> : Port to use internally for haxe server. Should *not* refer to an existing server. Default is `7000`.
+[--silent]   : Only show results.
+```
+
 In a workspace with a recording available, run the repro tool:
 
 ```sh
@@ -138,6 +146,38 @@ Some commands have been added for manual use:
 # Can also be enabled/disabled
 - abortOnFailure 0
 - abortOnFailure 1
+```
+
+## Turn a recording into a test
+
+Assertions can be added to check if replaying the recording gives the expected
+result, and can be used for integration with testing frameworks or with
+automated recording reduction tool (not implemented yet).
+
+For better results, use `--silent` to skip other output.
+
+```sh
+# Next request is expected to fail
+- assert fail
+> serverRequest "compilation"
+["build.hxml"]
+
+# Next request is expected to succeed
+- assert success
+> serverRequest "compilation"
+["build.hxml"]
+
+# Additional assertion for completion requests: number of items expected
+# (imply that the request is successful)
+- assert 42 items
+> serverRequest "display/completion"
+["..."]
+
+# Following asserts are to be used with `abortOnFailure` to make sense:
+# Script is supposed to run to that point
+- assert true
+# This part of the script should be unreachable
+- assert false
 ```
 
 ### Useful custom display requests
