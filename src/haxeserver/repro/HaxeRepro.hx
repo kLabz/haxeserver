@@ -597,7 +597,7 @@ class HaxeRepro {
 		}
 
 		var idDesc = id == null ? '' : ' #$id';
-		println('$l: > Server request$idDesc "$request"');
+		println('$l: > Server request$idDesc "$request"', displayNextResponse);
 
 		params = params.map(maybeConvertPath);
 		// trace(params);
