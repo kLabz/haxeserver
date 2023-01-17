@@ -385,6 +385,7 @@ class HaxeRepro {
 	}
 
 	function cleanup():Void {
+		file.close();
 		resetGit();
 		// No need to close the client, it's not stateful
 		if (server != null) server.kill();
