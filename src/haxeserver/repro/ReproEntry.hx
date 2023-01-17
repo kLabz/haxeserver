@@ -23,6 +23,7 @@ enum abstract ReproEntry(String) {
 	var Echo = "echo";
 	var StepByStep = "stepByStep";
 	var DisplayResponse = "displayResponse";
+	var Abort = "abort";
 	var AbortOnFailure = "abortOnFailure";
 
 	// Editor events

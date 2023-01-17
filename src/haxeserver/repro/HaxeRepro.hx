@@ -315,6 +315,10 @@ class HaxeRepro {
 						case Pause:
 							pause(next);
 
+						case Abort:
+							aborted = true;
+							done();
+
 						case AbortOnFailure:
 							abortOnFailure = extractor.id == null || extractor.id == 1;
 							next();
