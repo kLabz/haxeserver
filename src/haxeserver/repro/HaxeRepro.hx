@@ -48,9 +48,6 @@ class HaxeRepro {
 	var port:Int = 7000;
 	var filename:String = "repro.log";
 
-	var logfile(get, never):String;
-	inline function get_logfile():String return Path.join([path, filename]);
-
 	// Replay state
 	var lineNumber:Int = 0;
 	var gitStash:Bool = false;
@@ -78,9 +75,9 @@ class HaxeRepro {
 
 	function new() {
 		var handler = hxargs.Args.generate([
-			@doc("Path to the repro dump directory (mandatory)")
+			@doc("Path to the repro recording directory (mandatory)")
 			["--path"] => p -> path = p,
-			@doc("Log file to use in the dump directory. Default is `repro.log`.")
+			@doc("Log file to use in the recording directory. Default is `repro.log`.")
 			["--file"] => f -> filename = f,
 			@doc("Port to use internally for haxe server. Should *not* refer to an existing server. Default is `7000`.")
 			["--port"] => p -> port = p,
@@ -102,17 +99,17 @@ class HaxeRepro {
 		}
 
 		if (!FileSystem.exists(path) || !FileSystem.isDirectory(path)) {
-			console.error('Invalid dump path provided, skipping repro.');
+			console.error('Invalid recording path provided, skipping repro.');
 			Sys.exit(1);
 		}
 
-		var logfile = Path.join([path, filename]);
-		if (!FileSystem.exists(logfile) || FileSystem.isDirectory(logfile)) {
-			console.error('Invalid dump path provided, skipping repro.');
+		var filepath = Path.join([path, filename]);
+		if (!FileSystem.exists(filepath) || FileSystem.isDirectory(filepath)) {
+			console.error('Invalid recording file provided, skipping repro.');
 			Sys.exit(1);
 		}
 
-		this.file = File.read(logfile);
+		this.file = File.read(filepath);
 		next();
 	}
 
