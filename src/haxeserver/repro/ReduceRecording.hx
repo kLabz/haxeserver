@@ -53,6 +53,7 @@ class ReduceRecording {
 	// Replay state
 	var lineNumber:Int = 0;
 	var skipUntil:Int = 0;
+	var invalidated:Array<String> = [];
 	var skipping(get, never):Bool;
 	function get_skipping():Bool return lineNumber < skipUntil;
 
@@ -169,17 +170,31 @@ class ReduceRecording {
 						// Direct communication between client and server
 
 						case ServerRequest:
+							var data = nextLine(false);
 							var skipping = switch extractor.method {
 								case "compilation" | "cache build" | "server/readClassPaths":
+									invalidated = [];
 									false;
 
-								// TODO: skip unnecessary invalidate requests
+								case "server/invalidate" if (!skipping && data.charCodeAt(0) == '['.code):
+									var data:Array<String> = cast Json.parse(data);
+									var rpc = Json.parse(data.pop());
+									var file = rpc.params.file;
+
+									if (Lambda.has(invalidated, file)) true;
+									else {
+										invalidated.push(file);
+										false;
+									}
 
 								case _: skipping;
 							}
 
-							if (!skipping) addLine(line);
-							nextLine(!skipping);
+							if (!skipping) {
+								addLine(line);
+								addLine(data);
+							}
+
 							next();
 
 						case ServerResponse:
