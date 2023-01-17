@@ -52,7 +52,7 @@ class HaxeRepro {
 	inline function get_logfile():String return Path.join([path, filename]);
 
 	// Replay state
-	var lineNumber:Int = -1;
+	var lineNumber:Int = 0;
 	var gitStash:Bool = false;
 	var stepping:Bool = false;
 	var abortOnFailure:Bool = false;
