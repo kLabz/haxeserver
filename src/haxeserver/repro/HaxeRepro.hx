@@ -241,7 +241,16 @@ class HaxeRepro {
 							}
 
 							if (!aborted) {
-								serverRequest(l, extractor.id, extractor.method, getData(), next);
+								var line = nextLine();
+								switch (line.charCodeAt(0)) {
+									case '{'.code:
+										var data:Dynamic = Json.parse(line);
+										serverJsonRequest(l, extractor.id, extractor.method, data, next);
+
+									case _:
+										var data:Array<String> = cast Json.parse(line);
+										serverRequest(l, extractor.id, extractor.method, data, next);
+								}
 							} else {
 								nextLine();
 								next();
@@ -495,6 +504,20 @@ class HaxeRepro {
 		}
 
 		return a;
+	}
+
+	function serverJsonRequest(
+		l:Int,
+		id:Null<Int>,
+		method:String,
+		params:Dynamic,
+		cb:Void->Void
+	):Void {
+		var args = displayArguments.concat([
+			"--display",
+			Json.stringify({method: method, id: id, params: params})
+		]);
+		serverRequest(l, id, method, args, next);
 	}
 
 	function serverRequest(
