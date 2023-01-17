@@ -176,6 +176,10 @@ class ReduceRecording {
 									invalidated = [];
 									false;
 
+								case "display/completionItem/resolve":
+									// TODO: check if it's really ok to do that...
+									true;
+
 								case "server/invalidate" if (!skipping && data.charCodeAt(0) == '['.code):
 									var data:Array<String> = cast Json.parse(data);
 									var rpc = Json.parse(data.pop());
