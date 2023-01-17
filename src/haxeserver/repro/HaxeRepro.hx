@@ -205,7 +205,6 @@ class HaxeRepro {
 							root = extractor.method;
 							next();
 
-						// TODO: actually use this
 						case UserConfig:
 							userConfig = getData();
 							next();
@@ -216,8 +215,7 @@ class HaxeRepro {
 							next();
 
 						case DisplayArguments:
-							// Ignored for now; TODO: parse display arguments with new format
-							nextLine();
+							displayArguments = getData();
 							next();
 
 						case CheckoutGitRef:
@@ -316,7 +314,11 @@ class HaxeRepro {
 						// Commands
 
 						case Start:
-							start(next);
+							start(
+								userConfig != null
+									? serverJsonRequest.bind(l, 0, "initialize", userConfig, next)
+									: next
+							);
 
 						case Pause:
 							pause(next);
