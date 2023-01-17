@@ -582,14 +582,22 @@ class HaxeRepro {
 		params:Array<String>,
 		cb:Void->Void
 	):Void {
+		var start = Date.now().getTime();
+
 		var next = function() {
 			clearAssert();
+
+			if (logTimes) {
+				var old = times.get(request);
+				var time = Date.now().getTime() - start;
+				if (old == null) times.set(request, {count: 1, total: time});
+				else times.set(request, {count: old.count + 1, total: old.total + time});
+			}
 
 			if (stepping) pause(cb);
 			else cb();
 		}
 
-		var start = Date.now().getTime();
 		var idDesc = id == null ? '' : ' #$id';
 		println('$l: > Server request$idDesc "$request"');
 
@@ -601,13 +609,6 @@ class HaxeRepro {
 			res -> {
 				var hasError = res.hasError;
 				var out:String = res.stderr.toString();
-
-				if (logTimes) {
-					var old = times.get(request);
-					var time = Date.now().getTime() - start;
-					if (old == null) times.set(request, {count: 1, total: time});
-					else times.set(request, {count: old.count + 1, total: old.total + time});
-				}
 
 				// TODO: compare with serverResponse
 				switch (request) {
