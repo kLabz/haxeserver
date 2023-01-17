@@ -45,6 +45,7 @@ class HaxeRepro {
 	// Replay configuration
 	var path:String;
 	var silent:Bool = false;
+	var logTimes:Bool = false;
 	var port:Int = 7000;
 	var filename:String = "repro.log";
 
@@ -56,6 +57,7 @@ class HaxeRepro {
 	var displayNextResponse:Bool = false;
 	var currentAssert:Assertion = None;
 	var assertions = new Map<Int, AssertionItem>();
+	var times = new Map<String, {count:Int, total:Float}>();
 
 	/**
 	 * When `abortOnFailure` hit a failure;
@@ -83,6 +85,8 @@ class HaxeRepro {
 			["--port"] => p -> port = p,
 			@doc("Only show results.")
 			["--silent"] => () -> silent = true,
+			@doc("Log timing per request type.")
+			["--times"] => () -> logTimes = true,
 			_ => a -> {
 				Sys.println('Unknown argument $a');
 				Sys.exit(1);
@@ -131,6 +135,7 @@ class HaxeRepro {
 
 	function done():Void {
 		cleanup();
+		var exitCode = 0;
 
 		if (assertions.iterator().hasNext()) {
 			var nb = 0;
@@ -151,10 +156,57 @@ class HaxeRepro {
 
 			Sys.println('$nb assertion${nb.plural()} with $nbFail failure${nbFail.plural()}: ${summary.toString()}');
 			if (!silent) Sys.println(detailed.toString());
-			if (nbFail > 0) Sys.exit(1);
+			if (nbFail > 0) exitCode = 1;
 		} else {
 			Sys.println('Done.');
 		}
+
+		if (logTimes) {
+			var buf = new StringBuf();
+			buf.add('\n');
+
+			var pad = 2;
+			var cols = ["Timings:", "Count", "Total (s)", "Average (s)"];
+			var colSize = cols.map(s -> s.length);
+
+			var times = [for (k => v in times) {
+				if (k.length > colSize[0]) colSize[0] = k.length;
+
+				var countStr = Std.string(v.count);
+				if (countStr.length > colSize[1]) colSize[1] = countStr.length;
+
+				var totalStr = Std.string(Math.round(v.total / 10) / 100);
+				if (totalStr.length > colSize[2]) colSize[2] = totalStr.length;
+
+				var avg = Math.round((v.total / v.count) / 10) / 100;
+				k => {count: countStr, total: totalStr, avg: avg};
+			}];
+
+			var len = 0;
+			for (i => c in cols) {
+				len += colSize[i] + pad;
+				buf.add(c);
+				if (i < colSize.length) for (_ in 0...(colSize[i]-c.length+pad)) buf.add(' ');
+			}
+			buf.add('\n');
+			for (_ in 0...len) buf.add('-');
+			buf.add('\n');
+
+			for (k => v in times) {
+				buf.add(k);
+				for (_ in 0...(colSize[0]-k.length+pad)) buf.add(' ');
+				buf.add(v.count);
+				for (_ in 0...(colSize[1]-v.count.length+pad)) buf.add(' ');
+				buf.add(v.total);
+				for (_ in 0...(colSize[2]-v.total.length+pad)) buf.add(' ');
+				buf.add(v.avg);
+				buf.add('\n');
+			}
+
+			Sys.println(buf.toString());
+		}
+
+		Sys.exit(exitCode);
 	}
 
 	function next() {
@@ -537,6 +589,7 @@ class HaxeRepro {
 			else cb();
 		}
 
+		var start = Date.now().getTime();
 		var idDesc = id == null ? '' : ' #$id';
 		println('$l: > Server request$idDesc "$request"');
 
@@ -548,6 +601,13 @@ class HaxeRepro {
 			res -> {
 				var hasError = res.hasError;
 				var out:String = res.stderr.toString();
+
+				if (logTimes) {
+					var old = times.get(request);
+					var time = Date.now().getTime() - start;
+					if (old == null) times.set(request, {count: 1, total: time});
+					else times.set(request, {count: old.count + 1, total: old.total + time});
+				}
 
 				// TODO: compare with serverResponse
 				switch (request) {
