@@ -29,6 +29,8 @@ class ReduceRecording {
 	// Reducing options
 	var skipUntil:Int = 0;
 	var keepInvalidate:Bool = false;
+	var keepCompletion:Bool = true;
+	var keepDiagnostics:Bool = true;
 	var keepCompletionItemResolve:Bool = false;
 
 	// State
@@ -59,6 +61,13 @@ class ReduceRecording {
 			["--keep-server-invalidate"] => () -> keepInvalidate = true,
 			@doc("Do not remove 'display/completionItem/resolve' requests.")
 			["--keep-completionitem-resolve"] => () -> keepCompletionItemResolve = true,
+			@doc("Remove completion requests.")
+			["--no-completion"] => () -> {
+				keepCompletion = false;
+				keepCompletionItemResolve = false;
+			},
+			@doc("Remove diagnostics requests.")
+			["--no-diagnostics"] => () -> keepDiagnostics = false,
 			@doc("Overwrite target file if exists.")
 			["--overwrite"] => () -> overwrite = true,
 			_ => a -> {
@@ -153,6 +162,12 @@ class ReduceRecording {
 								case "compilation" | "cache build" | "server/readClassPaths":
 									invalidated = [];
 									false;
+
+								case "@diagnostics" if (!keepDiagnostics):
+									true;
+
+								case "display/completion" if (!keepCompletion):
+									true;
 
 								case "display/completionItem/resolve"
 								if (!keepCompletionItemResolve):
