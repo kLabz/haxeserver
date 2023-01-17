@@ -341,9 +341,11 @@ class HaxeRepro {
 						// Editor events
 
 						case DidChangeTextDocument:
+							var start = Date.now().getTime();
 							var event:DidChangeTextDocumentParams = getData();
 							println('$l: Apply document change to ${event.textDocument.uri.toFsPath().toString()}');
 							didChangeTextDocument(event, next);
+							if (logTimes) logTime("didChangeTextDocument", Date.now().getTime() - start);
 
 						case FileCreated:
 							var id = extractor.id;
@@ -586,13 +588,7 @@ class HaxeRepro {
 
 		var next = function() {
 			clearAssert();
-
-			if (logTimes) {
-				var old = times.get(request);
-				var time = Date.now().getTime() - start;
-				if (old == null) times.set(request, {count: 1, total: time});
-				else times.set(request, {count: old.count + 1, total: old.total + time});
-			}
+			if (logTimes) logTime(request, Date.now().getTime() - start);
 
 			if (stepping) pause(cb);
 			else cb();
@@ -734,6 +730,12 @@ class HaxeRepro {
 				var out = lines.join("\n") + (last == "" ? "" : '\n$last');
 				return out == "" ? Empty : Raw(out);
 		}
+	}
+
+	function logTime(k:String, t:Float):Void {
+		var old = times.get(k);
+		if (old == null) times.set(k, {count: 1, total: t});
+		else times.set(k, {count: old.count + 1, total: old.total + t});
 	}
 
 	function didChangeTextDocument(event:DidChangeTextDocumentParams, next:Void->Void):Void {
