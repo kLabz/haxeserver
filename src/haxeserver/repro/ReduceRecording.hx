@@ -8,67 +8,40 @@ import haxe.display.Server;
 import haxe.io.Path;
 import js.Node;
 import js.Node.console;
-import js.node.Buffer;
-import js.node.ChildProcess;
-import js.node.child_process.ChildProcess as ChildProcessObject;
 import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
 import sys.io.FileOutput;
 
-import haxeLanguageServer.Configuration;
-import haxeLanguageServer.DisplayServerConfig;
-import haxeLanguageServer.documents.HxTextDocument;
 import haxeserver.process.HaxeServerProcessConnect;
-import languageServerProtocol.protocol.Protocol.DidChangeTextDocumentParams;
-import languageServerProtocol.protocol.Protocol.FileEvent;
-
-// TODO: open issue and/or improve error
-// Module js.Node does not define type console
-// import js.Node.console.error;
 
 using StringTools;
-using haxeLanguageServer.extensions.DocumentUriExtensions;
 using haxeserver.repro.HaxeRepro;
 
 class ReduceRecording {
-	// static inline var REPRO_PATCHFILE = 'status.patch';
-	// static inline var UNTRACKED_DIR:String = "untracked";
-	// static inline var NEWFILES_DIR:String = "newfiles";
-
-	// Recording configuration
-	// var root:String = "./";
-	// var userConfig:UserConfig;
-	// var displayServer:DisplayServerConfig;
-	// var displayArguments:Array<String>;
-	// var gitRef:String;
-
-	// Replay configuration
+	// Configuration
 	var path:String;
 	// TODO: might need path_in and path_out so that file events from cut part
 	// can be replaced with git stash + untracked files
 	var filename_in:String = "repro.log";
 	var filename_out:String = "repro-min.log";
 
-	// Replay state
-	var lineNumber:Int = 0;
+	// Reducing options
 	var skipUntil:Int = 0;
+	var keepInvalidate:Bool = false;
+	var keepCompletionItemResolve:Bool = false;
+
+	// State
+	var lineNumber:Int = 0;
 	var invalidated:Array<String> = [];
 	var skipping(get, never):Bool;
 	function get_skipping():Bool return lineNumber < skipUntil;
-
-	/**
-	 * When `abortOnFailure` hit a failure;
-	 * We only continue to gather failed assertions for reporting.
-	 */
-	var aborted:Bool = false;
 
 	var file_in:FileInput;
 	var file_out:FileOutput;
 	var extractor = Extractor.init();
 
 	public static function main() new ReduceRecording();
-	// public static function plural(nb:Int):String return nb > 1 ? "s" : "";
 
 	function new() {
 		var overwrite:Bool = false;
@@ -82,6 +55,10 @@ class ReduceRecording {
 			["--file-out"] => f -> filename_out = f,
 			@doc("Skip all non-essential lines before this one.")
 			["--skip-until"] => s -> skipUntil = s,
+			@doc("Do not try to optimize 'server/invalidate' requests.")
+			["--keep-server-invalidate"] => () -> keepInvalidate = true,
+			@doc("Do not remove 'display/completionItem/resolve' requests.")
+			["--keep-completionitem-resolve"] => () -> keepCompletionItemResolve = true,
 			@doc("Overwrite target file if exists.")
 			["--overwrite"] => () -> overwrite = true,
 			_ => a -> {
@@ -151,6 +128,7 @@ class ReduceRecording {
 							next();
 
 						// Assertions
+						// We should probably avoid asserts and command _before_ reducing anyway...
 						case Assert:
 							if (!skipping) addLine(line);
 							next();
@@ -176,11 +154,12 @@ class ReduceRecording {
 									invalidated = [];
 									false;
 
-								case "display/completionItem/resolve":
-									// TODO: check if it's really ok to do that...
+								case "display/completionItem/resolve"
+								if (!keepCompletionItemResolve):
 									true;
 
-								case "server/invalidate" if (!skipping && data.charCodeAt(0) == '['.code):
+								case "server/invalidate"
+								if (!skipping && !keepInvalidate && data.charCodeAt(0) == '['.code):
 									var data:Array<String> = cast Json.parse(data);
 									var rpc = Json.parse(data.pop());
 									var file = rpc.params.file;
@@ -222,7 +201,7 @@ class ReduceRecording {
 
 						// Commands
 
-						// TODO: some could be removed, some _should_ be removed
+						// We shouldn't really add commands before reducing
 						case Start | Pause | Abort | AbortOnFailure | StepByStep | DisplayResponse | Echo:
 							addLine(line);
 							next();
