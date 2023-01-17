@@ -657,10 +657,11 @@ class HaxeRepro {
 
 	function extractResult<T:{}>(out:String):ResponseKind<T> {
 		var lines = out.split("\n");
-		var last = lines.pop();
+		var last = lines.length > 1 ? lines.pop() : "";
 		switch [lines.length, last] {
 			case [1, ""]:
-				var json = try Json.parse(lines[0]) catch(_) null;
+				var json = try Json.parse(lines[0]) catch(e) null;
+				if (json == null) return Raw(out);
 				return JsonResult(json);
 
 			case [n, _]:
