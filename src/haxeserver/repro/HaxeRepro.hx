@@ -561,19 +561,23 @@ class HaxeRepro {
 								switch (request) {
 									case "display/completion":
 										var res:CompletionResult = cast res.result;
-										if (res.result == null) hasError = true;
-										else {
-											hasError = false;
-											var nbItems = res.result.items.length;
+										var nbItems = try res.result.items.length catch(_) 0;
 
-											if (displayNextResponse) {
-												println('$l => Completion request returned $nbItems items');
-											}
+										if (displayNextResponse) {
+											println('$l => Completion request returned $nbItems items');
+										}
 
-											switch (currentAssert) {
-												case ExpectItemCount(_, c): assertionResult(l, c == nbItems);
-												case _:
-											}
+										switch (currentAssert) {
+											case ExpectItemCount(_, null):
+												hasError = nbItems == 0;
+												assertionResult(l, !hasError);
+
+											case ExpectItemCount(_, c):
+												hasError = c != nbItems;
+												assertionResult(l, !hasError);
+
+											case _:
+												hasError = false;
 										}
 
 										if (hasError) println('$l: => Completion request failed');
@@ -692,7 +696,7 @@ enum Assertion {
 	ExpectUnreachable(line:Int);
 	ExpectFailure(line:Int);
 	ExpectSuccess(line:Int);
-	ExpectItemCount(line:Int, count:Int);
+	ExpectItemCount(line:Int, count:Null<Int>);
 }
 
 enum abstract AssertionKind(String) {
