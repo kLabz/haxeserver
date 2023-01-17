@@ -450,7 +450,9 @@ class HaxeRepro {
 		Sys.exit(code);
 	}
 
-	function println(s:String):Void if (!aborted && !silent) Sys.println(s);
+	function println(s:String, ignoreSilent:Bool = false):Void {
+		if (!aborted && (ignoreSilent || !silent)) Sys.println(s);
+	}
 
 	function getLine():String {
 		lineNumber++;
@@ -609,8 +611,8 @@ class HaxeRepro {
 				// TODO: compare with serverResponse
 				switch (request) {
 					case "compilation":
-						if (hasError) println('$l: => Compilation error:\n' + out.trim());
-						else if (displayNextResponse) println(out.trim());
+						if (hasError) println('$l: => Compilation error:\n' + out.trim(), true);
+						else if (displayNextResponse) println(out.trim(), true);
 
 					case _:
 						switch (extractResult(out)) {
@@ -621,7 +623,7 @@ class HaxeRepro {
 										var nbItems = try res.result.items.length catch(_) 0;
 
 										if (displayNextResponse) {
-											println('$l => Completion request returned $nbItems items');
+											println('$l => Completion request returned $nbItems items', true);
 										}
 
 										switch (currentAssert) {
@@ -637,14 +639,14 @@ class HaxeRepro {
 												hasError = false;
 										}
 
-										if (hasError) println('$l: => Completion request failed');
+										if (hasError) println('$l: => Completion request failed', true);
 
 									case "server/contexts" if (displayNextResponse):
 										var contexts:Array<HaxeServerContext> = cast res.result.result;
 										for (c in contexts) {
-											println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)');
-											println('    signature: ${c.signature}');
-											// println('    defines: ${c.defines.map(d -> d.key).join(", ")}');
+											println('  ${c.index} ${c.desc} (${c.platform}, ${c.defines.length} defines)', true);
+											println('    signature: ${c.signature}', true);
+											// println('    defines: ${c.defines.map(d -> d.key).join(", ")}', true);
 										}
 
 									// TODO: other special case handling
@@ -652,23 +654,23 @@ class HaxeRepro {
 									case _:
 										if (hasError || displayNextResponse) {
 											var hasError = hasError ? "(has error)" : "";
-											println('$l: => Server response: $hasError');
+											println('$l: => Server response: $hasError', true);
 										}
 
-										if (displayNextResponse) println(Std.string(res));
+										if (displayNextResponse) println(Std.string(res), true);
 								}
 
 							case Raw(out):
 								if (hasError || displayNextResponse) {
 									var hasError = res.hasError ? "(has error)" : "";
-									println('$l: => Server response: $hasError');
+									println('$l: => Server response: $hasError', true);
 								}
 
-								if (displayNextResponse) println(out);
+								if (displayNextResponse) println(out, true);
 
 							case Empty:
 								if (request == "display/completion") hasError = true;
-								if (hasError || displayNextResponse) println('$l: => Empty server response');
+								if (hasError || displayNextResponse) println('$l: => Empty server response', true);
 						}
 				}
 
@@ -680,7 +682,7 @@ class HaxeRepro {
 
 				if (displayNextResponse) displayNextResponse = false;
 				if (hasError && abortOnFailure) {
-					println('Failure detected, aborting rest of script.');
+					println('Failure detected, aborting rest of script.', true);
 					aborted = true;
 					exit(1); // TODO: find a way to configure with or without asserts
 				}
