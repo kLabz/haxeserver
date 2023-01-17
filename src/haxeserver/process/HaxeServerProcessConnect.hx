@@ -40,8 +40,8 @@ class HaxeServerProcessConnect implements IHaxeServerProcess {
 		#if nodejs
 		var p = ChildProcess.spawnSync(haxeCmd, baseArguments.concat(arguments));
 		// TODO: handle stdin
-		var stdout = (p.stdout:Buffer);
-		var stderr = (p.stderr:Buffer);
+		var stdout = (p.stdout:Buffer).hxToBytes();
+		var stderr = (p.stderr:Buffer).hxToBytes();
 		var exitCode = p.status;
 
 		#else
@@ -60,7 +60,7 @@ class HaxeServerProcessConnect implements IHaxeServerProcess {
 			hasError: exitCode != 0,
 			stdout: stdout.toString(),
 			stderr: stderr.toString(),
-			stderrRaw: #if nodejs null #else stderr #end, // TODO
+			stderrRaw: stderr,
 			prints: []
 		});
 	}
