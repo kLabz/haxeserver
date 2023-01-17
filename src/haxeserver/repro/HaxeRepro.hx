@@ -625,6 +625,7 @@ class HaxeRepro {
 				if (hasError && abortOnFailure) {
 					println('Failure detected, aborting rest of script.');
 					aborted = true;
+					exit(1); // TODO: find a way to configure with or without asserts
 				}
 
 				// TODO: make sure we use the actual display request order
