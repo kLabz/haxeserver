@@ -548,19 +548,37 @@ class HaxeRepro {
 	}
 
 	function maybeConvertPath(a:String):String {
-		var fileparam = '"params":{"file":"';
-		if (a.contains('$fileparam$root')) return a.replace('$fileparam$root', '$fileparam./');
-
 		if (a.charCodeAt(0) == "/".code) {
-			if (a.startsWith(root)) return "./" + a.substr(root.length);
+			if (a.startsWith(root)) {
+				a = a.substr(root.length);
+				if (a.charCodeAt(0) == '/'.code) a = a.substr(1);
+				if (a == "") a = ".";
+				return a;
+			}
 			throw 'Absolute path outside root not handled yet ($a)';
 		}
 
-		// TODO: clean that
 		if (a.startsWith("--cwd /")) {
-			if (a.startsWith("--cwd " + root)) return "--cwd ./" + a.substr("--cwd ".length + root.length);
+			if (a.startsWith("--cwd " + root)) {
+				a = a.substr("--cwd ".length + root.length);
+				if (a.charCodeAt(0) == '/'.code) a = a.substr(1);
+				if (a == "") a = ".";
+				return '--cwd $a';
+			}
 			throw 'Absolute path outside root not handled yet ($a)';
 		}
+
+		try {
+			var data:{params:{file:String}} = cast Json.parse(a);
+			if (data.params.file.startsWith(root)) {
+				var file = data.params.file.substr(root.length);
+				if (file.charCodeAt(0) == '/'.code) file = file.substr(1);
+				if (file == "") file = ".";
+				data.params.file = file;
+
+				return Json.stringify(data);
+			}
+		} catch (_) {}
 
 		return a;
 	}
