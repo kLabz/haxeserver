@@ -3,4 +3,4 @@
 	url = https://github.com/kLabz/haxerepro-xredefined
 [submodule "haxe-lsp"]
 	path = haxe-lsp
-	url = https://github.com/vshaxe/haxe-language-server
+	url = https://github.com/kLabz/haxe-language-server
