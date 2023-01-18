@@ -21,6 +21,7 @@ enum abstract ReproEntry(String) {
 	var Start = "start";
 	var Pause = "pause";
 	var Echo = "echo";
+	var Mute = "mute";
 	var StepByStep = "stepByStep";
 	var DisplayResponse = "displayResponse";
 	var Abort = "abort";

@@ -52,6 +52,7 @@ class HaxeRepro {
 	// Replay state
 	var lineNumber:Int = 0;
 	var gitStash:Bool = false;
+	var muted:Bool = false;
 	var stepping:Bool = false;
 	var abortOnFailure:Bool = false;
 	var displayNextResponse:Bool = false;
@@ -385,8 +386,12 @@ class HaxeRepro {
 							abortOnFailure = extractor.id == null || extractor.id == 1;
 							next();
 
+						case Mute:
+							muted = extractor.id == null || extractor.id == 1;
+							next();
+
 						case StepByStep:
-							stepping = extractor.id == 1;
+							stepping = extractor.id == null || extractor.id == 1;
 							next();
 
 						case DisplayResponse:
@@ -451,7 +456,7 @@ class HaxeRepro {
 	}
 
 	function println(s:String, ignoreSilent:Bool = false):Void {
-		if (!aborted && (ignoreSilent || !silent)) Sys.println(s);
+		if (!aborted && !muted && (ignoreSilent || !silent)) Sys.println(s);
 	}
 
 	function getLine():String {
