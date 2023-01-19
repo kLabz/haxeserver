@@ -13,11 +13,6 @@ import sys.io.File;
 import sys.io.FileInput;
 import sys.io.FileOutput;
 
-import haxeserver.process.HaxeServerProcessConnect;
-
-using StringTools;
-using haxeserver.repro.HaxeRepro;
-
 class ReduceRecording {
 	// Configuration
 	var path:String;

@@ -1,20 +1,11 @@
 -cp src
--cp tests
 
-# Don't do this at home ~ TODO: properly include relevant types
--cp haxe-lsp/src
 -cp haxe-lsp/shared
 -lib hxargs
--lib language-server-protocol
 -lib safety
--lib vscode-json-rpc
-
 -lib hxnodejs
--D analyzer-optimize
--D haxeserver.displayrequests_wait
--D haxeserver.displayrequests_delay=100
 
-# Input.readBytes not implemented on eval?!
-# --run haxeserver.repro.HaxeRepro
+-D analyzer-optimize
+
 -main haxeserver.repro.ReduceRecording
 --js repro/reduce.js
