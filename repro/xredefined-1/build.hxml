@@ -1,5 +1,0 @@
-# Just need any --macro call
---macro define('whatever')
--cp src
--main Main
--D no-compilation

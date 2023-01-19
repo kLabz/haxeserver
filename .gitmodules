@@ -1,6 +1,3 @@
-[submodule "repro/xredefined"]
-	path = repro/xredefined
-	url = https://github.com/kLabz/haxerepro-xredefined
 [submodule "haxe-lsp"]
 	path = haxe-lsp
 	url = https://github.com/kLabz/haxe-languageserver
