@@ -22,10 +22,6 @@ import haxeserver.process.HaxeServerProcessConnect;
 import languageServerProtocol.protocol.Protocol.DidChangeTextDocumentParams;
 import languageServerProtocol.protocol.Protocol.FileEvent;
 
-// TODO: open issue and/or improve error
-// Module js.Node does not define type console
-// import js.Node.console.error;
-
 using StringTools;
 using haxeLanguageServer.extensions.DocumentUriExtensions;
 using haxeserver.repro.HaxeRepro;
