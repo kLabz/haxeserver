@@ -74,7 +74,7 @@ class HaxeRepro {
 	function get_started():Bool return client != null;
 
 	public static function main() new HaxeRepro();
-	public static function plural(nb:Int):String return nb > 1 ? "s" : "";
+	public static function plural(nb:Int):String return nb != 1 ? "s" : "";
 
 	function new() {
 		var handler = hxargs.Args.generate([
@@ -150,12 +150,13 @@ class HaxeRepro {
 
 				if (!res.success) {
 					nbFail++;
-					// TODO: better output
 					detailed.add('$l: assertion failed ${res.assert} at line ${res.lineApplied}\n');
 				}
 			}
 
-			Sys.println('$nb assertion${nb.plural()} with $nbFail failure${nbFail.plural()}: ${summary.toString()}');
+			Sys.print('$nb assertion${nb.plural()} with $nbFail failure${nbFail.plural()}');
+			if (nbFail > 0) Sys.print(': ${summary.toString()}');
+			Sys.println('');
 			if (!silent) Sys.println(detailed.toString());
 			if (nbFail > 0) exitCode = 1;
 		} else {
@@ -248,6 +249,7 @@ class HaxeRepro {
 								case ExpectFailure: ExpectFailure(l);
 								case ExpectSuccess: ExpectSuccess(l);
 								case ExpectItemCount: ExpectItemCount(l, extractor.id);
+								case ExpectOutput: ExpectOutput(l, getFileContent());
 							}
 
 							next();
@@ -430,7 +432,8 @@ class HaxeRepro {
 
 		assertions.set(switch (assert) {
 			case ExpectReached(l) | ExpectUnreachable(l) | ExpectFailure(l)
-				 | ExpectSuccess(l) | ExpectItemCount(l, _): l;
+				 | ExpectSuccess(l) | ExpectItemCount(l, _) | ExpectOutput(l, _):
+				l;
 
 			case None: throw 'Invalid assertion result';
 		}, {
@@ -631,6 +634,29 @@ class HaxeRepro {
 				var hasError = res.hasError;
 				var out:String = res.stderr.toString();
 
+				switch (currentAssert) {
+					case ExpectOutput(_, expected):
+						hasError = out != expected;
+
+						if (hasError) {
+							final a = new diff.FileData(haxe.io.Bytes.ofString(expected), "expected", Date.now());
+							final b = new diff.FileData(haxe.io.Bytes.ofString(out), "actual", Date.now());
+							var ctx:diff.Context = {
+								file1: a,
+								file2: b,
+								context: 10
+							}
+							final script = diff.Analyze.diff2Files(ctx);
+							var diff = diff.Printer.printUnidiff(ctx, script);
+							diff = diff.split("\n").slice(3).join("\n");
+							println(diff, true);
+						}
+
+						assertionResult(l, !hasError);
+
+					case _:
+				}
+
 				// TODO: compare with serverResponse
 				switch (request) {
 					case "compilation":
@@ -786,6 +812,7 @@ enum Assertion {
 	ExpectFailure(line:Int);
 	ExpectSuccess(line:Int);
 	ExpectItemCount(line:Int, count:Null<Int>);
+	ExpectOutput(line:Int, output:String);
 }
 
 enum abstract AssertionKind(String) {
@@ -794,6 +821,7 @@ enum abstract AssertionKind(String) {
 	var ExpectFailure = "fail";
 	var ExpectSuccess = "success";
 	var ExpectItemCount = "items";
+	var ExpectOutput = "output";
 }
 
 enum ResponseKind<T:{}> {
