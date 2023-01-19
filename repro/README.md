@@ -21,10 +21,11 @@ haxe repro.hxml
 
 ```
 $ node repro/repro.js
-[--path] <p> : Path to the repro dump directory (mandatory)
-[--file] <f> : Log file to use in the dump directory. Default is `repro.log`.
+[--path] <p> : Path to the repro recording directory (mandatory)
+[--file] <f> : Log file to use in the recording directory. Default is `repro.log`.
 [--port] <p> : Port to use internally for haxe server. Should *not* refer to an existing server. Default is `7000`.
 [--silent]   : Only show results.
+[--times]    : Log timing per request type.
 ```
 
 In a workspace with a recording available, run the repro tool:
