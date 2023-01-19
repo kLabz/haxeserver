@@ -9,8 +9,8 @@
 -lib hxnodejs
 
 -D analyzer-optimize
--D haxeserver.displayrequests_wait
--D haxeserver.displayrequests_delay=100
+-D haxeserver.repro.displayrequests_wait
+-D haxeserver.repro.displayrequests_delay=100
 
--main haxeserver.repro.HaxeRepro
---js repro/repro.js
+-main haxeserver.repro.ReplayRecording
+--js repro/replay.js

@@ -1,6 +1,6 @@
 package haxeserver.repro;
 
-enum abstract ReproEntry(String) {
+enum abstract RecordingEntry(String) {
 	// Initialization
 	var Root = "root";
 	var UserConfig = "userConfig";

@@ -20,8 +20,8 @@ abstract Extractor(EReg) from EReg {
 	public var direction(get, never):ComDirection;
 	function get_direction():ComDirection return cast this.matched(2);
 
-	public var entry(get, never):ReproEntry;
-	function get_entry():ReproEntry return cast this.matched(3);
+	public var entry(get, never):RecordingEntry;
+	function get_entry():RecordingEntry return cast this.matched(3);
 
 	public var id(get, never):Null<Int>;
 	function get_id():Null<Int> {

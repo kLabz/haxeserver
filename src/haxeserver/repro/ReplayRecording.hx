@@ -24,9 +24,9 @@ import languageServerProtocol.protocol.Protocol.FileEvent;
 
 using StringTools;
 using haxeLanguageServer.extensions.DocumentUriExtensions;
-using haxeserver.repro.HaxeRepro;
+using haxeserver.repro.ReplayRecording;
 
-class HaxeRepro {
+class ReplayRecording {
 	static inline var REPRO_PATCHFILE = 'status.patch';
 	static inline var UNTRACKED_DIR:String = "untracked";
 	static inline var NEWFILES_DIR:String = "newfiles";
@@ -69,12 +69,12 @@ class HaxeRepro {
 	var started(get, never):Bool;
 	function get_started():Bool return client != null;
 
-	public static function main() new HaxeRepro();
+	public static function main() new ReplayRecording();
 	public static function plural(nb:Int):String return nb != 1 ? "s" : "";
 
 	function new() {
 		var handler = hxargs.Args.generate([
-			@doc("Path to the repro recording directory (mandatory)")
+			@doc("Path to the recording directory (mandatory)")
 			["--path"] => p -> path = p,
 			@doc("Log file to use in the recording directory. Default is `repro.log`.")
 			["--file"] => f -> filename = f,
@@ -100,13 +100,13 @@ class HaxeRepro {
 		}
 
 		if (!FileSystem.exists(path) || !FileSystem.isDirectory(path)) {
-			console.error('Invalid recording path provided, skipping repro.');
+			console.error('Invalid recording path provided, skipping replay.');
 			Sys.exit(1);
 		}
 
 		var filepath = Path.join([path, filename]);
 		if (!FileSystem.exists(filepath) || FileSystem.isDirectory(filepath)) {
-			console.error('Invalid recording file provided, skipping repro.');
+			console.error('Invalid recording file provided, skipping replay.');
 			Sys.exit(1);
 		}
 
@@ -285,7 +285,7 @@ class HaxeRepro {
 
 						case ServerRequest:
 							if (!started) {
-								println('$l: repro script not started yet. Use "- start" before sending requests.');
+								println('$l: replay not started yet. Use "- start" before sending requests.');
 								exit(1);
 							}
 
@@ -308,7 +308,7 @@ class HaxeRepro {
 						case ServerResponse:
 							// var id = extractor.id;
 							// var method = extractor.method;
-							// Disabled printing for now as it can be confused with actual result from repro...
+							// Disabled printing for now as it can be confused with actual result from replay...
 							// var idDesc = id == null ? '' : ' #$id';
 							// var methodDesc = method == null ? '' : ' "$method"';
 							// var desc = (id != null || method != null) ? " for" : "";
@@ -320,7 +320,7 @@ class HaxeRepro {
 						case ServerError:
 							// var id = extractor.id;
 							// var method = extractor.method;
-							// Disabled printing for now as it can be confused with actual result from repro...
+							// Disabled printing for now as it can be confused with actual result from replay...
 							// var idDesc = id == null ? '' : ' #$id';
 							// var methodDesc = method == null ? '' : ' "$method"';
 							// if (id == null && method == null) methodDesc = " request";
@@ -330,7 +330,7 @@ class HaxeRepro {
 							next();
 
 						case CompilationResult:
-							// Disabled printing for now as it can be confused with actual result from repro...
+							// Disabled printing for now as it can be confused with actual result from replay...
 							// var fail = extractor.method == "" ? "ok" : "failed";
 							// println('$l: < Compilation result: $fail');
 							// TODO: check against actual result
@@ -505,7 +505,7 @@ class HaxeRepro {
 
 		if (git("status", "--porcelain").trim() != "") {
 			gitStash = true;
-			git("stash", "save", "--include-untracked", "Stash before repro");
+			git("stash", "save", "--include-untracked", "Stash before replay");
 		}
 
 		git("checkout", ref);
